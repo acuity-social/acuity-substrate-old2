@@ -30,6 +30,8 @@ use primitives::v1::{Id as ParaId, InboundDownwardMessage, Hash};
 
 mod dmp;
 
+mod ump;
+
 pub trait Trait: frame_system::Trait + configuration::Trait {}
 
 decl_storage! {
