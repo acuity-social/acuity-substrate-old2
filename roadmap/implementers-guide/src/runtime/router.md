@@ -21,14 +21,24 @@ RelayDispatchQueues: map ParaId => Vec<(ParachainDispatchOrigin, RawDispatchable
 /// First item in the tuple is the count of messages and second
 /// is the total length (in bytes) of the message payloads.
 ///
-/// Note that this is an auxilary mapping: it's possible to tell the byte size  and the number of
+/// Note that this is an auxilary mapping: it's possible to tell the byte size and the number of
 /// messages only looking at `RelayDispatchQueues`. This mapping is separate to avoid the cost of
 /// loading the whole message queue if only the total size and count are required.
+///
+/// Invariant:
+/// - The set of keys should exactly match the set of keys of `RelayDispatchQueues`.
 RelayDispatchQueueSize: map ParaId => (u32, u32);
 /// The ordered list of `ParaId`s that have a `RelayDispatchQueue` entry.
+///
+/// Invariant:
+/// - The set of items from this vector should be exactly the set of the keys in
+///   `RelayDispatchQueues` and `RelayDispatchQueueSize`.
 NeedsDispatch: Vec<ParaId>;
-/// This is the para that will get dispatched first during the next upward dispatchable queue
+/// This is the para that gets will get dispatched first during the next upward dispatchable queue
 /// execution round.
+///
+/// Invariant:
+/// - If `Some(para)`, then `para` must be present in `NeedsDispatch`.
 NextDispatchRoundStartWith: Option<ParaId>;
 ```
 
@@ -46,7 +56,7 @@ DownwardMessageQueues: map ParaId => Vec<InboundDownwardMessage>;
 /// - `prev_head`: is the previous head hash or zero if none.
 /// - `B`: is the relay-chain block number in which a message was appended.
 /// - `H(M)`: is the hash of the message being appended.
-DownwardMessageQueueHeads: map ParaId => Option<Hash>;
+DownwardMessageQueueHeads: map ParaId => Hash;
 ```
 
 ### HRMP
@@ -88,12 +98,12 @@ struct HrmpChannel {
     used_bytes: u32,
     /// A head of the Message Queue Chain for this channel. Each link in this chain has a form:
     /// `(prev_head, B, H(M))`, where
-    /// - `prev_head`: is the previous value of `mqc_head`.
+    /// - `prev_head`: is the previous value of `mqc_head` or zero if none.
     /// - `B`: is the [relay-chain] block number in which a message was appended
     /// - `H(M)`: is the hash of the message being appended.
     /// This value is initialized to a special value that consists of all zeroes which indicates
     /// that no messages were previously added.
-    mqc_head: Hash,
+    mqc_head: Option<Hash>,
 }
 ```
 HRMP related storage layout
@@ -195,7 +205,8 @@ Candidate Acceptance Function:
     1. `new_hrmp_watermark` should be either
         1. equal to the context's block number
         1. or in `HrmpChannelDigests` for `P` an entry with the block number should exist
-* `verify_outbound_hrmp(sender: ParaId, Vec<OutboundHrmpMessage>)`:
+* `check_outbound_hrmp(sender: ParaId, Vec<OutboundHrmpMessage>)`:
+    1. Checks that horizontal messages are sorted by ascending recipient ParaId and there is no two horizontal messages have the same recipient.
     1. For each horizontal message `M` with the channel `C` identified by `(sender, M.recipient)` check:
         1. exists
         1. `M`'s payload size doesn't exceed a preconfigured limit `C.limit_message_size`
@@ -219,6 +230,10 @@ Candidate Enactment:
         1. Decrement `C.used_places`
         1. Decrement `C.used_bytes` by `M`'s payload size.
     1. Set `HrmpWatermarks` for `P` to be equal to `new_hrmp_watermark`
+    > NOTE: That collecting digests can be inefficient and the time it takes grows very fast. Thanks to the aggresive
+    > parametrization this shouldn't be a big of a deal.
+    > If that becomes a problem consider introducing an extra dictionary which says at what block the given sender
+    > sent a message to the recipient.
 * `prune_dmq(P: ParaId, processed_downward_messages)`:
     1. Remove the first `processed_downward_messages` from the `DownwardMessageQueues` of `P`.
 * `enact_upward_messages(P: ParaId, Vec<UpwardMessage>)`:
@@ -260,9 +275,7 @@ any of dispatchables return an error.
         1. Decode `D` into a dispatchable. Otherwise, if succeeded:
             1. If `weight_of(D) > config.dispatchable_upward_message_critical_weight` then skip the dispatchable. Otherwise:
                 1. Execute `D` and add the actual amount of weight consumed to `T`.
-            1. If `weight_of(D) + T > config.preferred_dispatchable_upward_messages_step_weight`, set `NextDispatchRoundStartWith` to `P` and finish processing.
-            > NOTE that in practice we would need to approach the weight calculation more thoroughly, i.e. incorporate all operations
-            > that could take place on the course of handling these dispatchables.
+        1. If `T >= config.preferred_dispatchable_upward_messages_step_weight`, set `NextDispatchRoundStartWith` to `P` and finish processing.
         1. If `RelayDispatchQueues` for `P` became empty, remove `P` from `NeedsDispatch`.
         1. If `NeedsDispatch` became empty then finish processing and set `NextDispatchRoundStartWith` to `None`.
 
