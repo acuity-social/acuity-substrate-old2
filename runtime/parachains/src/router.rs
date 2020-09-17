@@ -32,7 +32,15 @@ use primitives::v1::{Id as ParaId, InboundDownwardMessage, Hash, UpwardMessage};
 mod dmp;
 mod ump;
 
-pub trait Trait: frame_system::Trait + configuration::Trait {}
+pub use ump::UmpSink;
+
+#[cfg(test)]
+pub use ump::mock_sink::MockUmpSink;
+
+pub trait Trait: frame_system::Trait + configuration::Trait {
+	/// A place where all received upward messages are funneled.
+	type UmpSink: UmpSink;
+}
 
 decl_storage! {
 	trait Store for Module<T: Trait> as Router {

@@ -103,7 +103,9 @@ impl crate::configuration::Trait for Test { }
 
 impl crate::paras::Trait for Test { }
 
-impl crate::router::Trait for Test { }
+impl crate::router::Trait for Test {
+	type UmpSink = crate::router::MockUmpSink;
+}
 
 impl crate::scheduler::Trait for Test { }
 

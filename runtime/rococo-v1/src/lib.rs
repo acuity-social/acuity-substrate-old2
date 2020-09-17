@@ -730,7 +730,9 @@ impl parachains_inclusion::Trait for Runtime {
 
 impl parachains_paras::Trait for Runtime { }
 
-impl parachains_router::Trait for Runtime { }
+impl parachains_router::Trait for Runtime {
+	type UmpSink = (); // TODO: To be handled by the XCM receiver.
+}
 
 impl parachains_inclusion_inherent::Trait for Runtime { }
 
