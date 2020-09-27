@@ -14,9 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use log::info;
 #[cfg(not(feature = "service-rewr"))]
-use service::{IdentifyVariant, self};
+use service;
 #[cfg(feature = "service-rewr")]
 use service_new::{IdentifyVariant, self as service};
 use sc_cli::{SubstrateCli, Result, RuntimeVersion, Role};
@@ -31,7 +30,7 @@ fn get_exec_name() -> Option<String> {
 }
 
 impl SubstrateCli for Cli {
-	fn impl_name() -> String { "Parity Polkadot".into() }
+	fn impl_name() -> String { "Acuity Social".into() }
 
 	fn impl_version() -> String { env!("SUBSTRATE_CLI_IMPL_VERSION").into() }
 
@@ -39,81 +38,46 @@ impl SubstrateCli for Cli {
 
 	fn author() -> String { env!("CARGO_PKG_AUTHORS").into() }
 
-	fn support_url() -> String { "https://github.com/paritytech/polkadot/issues/new".into() }
+	fn support_url() -> String { "https://github.com/acuity-social/acuity-substrate/issues/new".into() }
 
 	fn copyright_start_year() -> i32 { 2017 }
 
-	fn executable_name() -> String { "polkadot".into() }
+	fn executable_name() -> String { "acuity-substrate".into() }
 
 	fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn sc_service::ChainSpec>, String> {
 		let id = if id == "" {
 			let n = get_exec_name().unwrap_or_default();
-			["polkadot", "kusama", "westend"].iter()
+			["acuity"].iter()
 				.cloned()
 				.find(|&chain| n.starts_with(chain))
-				.unwrap_or("polkadot")
+				.unwrap_or("acuity")
 		} else { id };
 		Ok(match id {
-			"polkadot-dev" | "dev" => Box::new(service::chain_spec::polkadot_development_config()?),
-			"polkadot-local" => Box::new(service::chain_spec::polkadot_local_testnet_config()?),
-			"polkadot-staging" => Box::new(service::chain_spec::polkadot_staging_testnet_config()?),
-			"kusama-dev" => Box::new(service::chain_spec::kusama_development_config()?),
-			"kusama-local" => Box::new(service::chain_spec::kusama_local_testnet_config()?),
-			"kusama-staging" => Box::new(service::chain_spec::kusama_staging_testnet_config()?),
-			"polkadot" => Box::new(service::chain_spec::polkadot_config()?),
-			"westend" => Box::new(service::chain_spec::westend_config()?),
-			"kusama" => Box::new(service::chain_spec::kusama_config()?),
-			"westend-dev" => Box::new(service::chain_spec::westend_development_config()?),
-			"westend-local" => Box::new(service::chain_spec::westend_local_testnet_config()?),
-			"westend-staging" => Box::new(service::chain_spec::westend_staging_testnet_config()?),
+			"dev" => Box::new(service::chain_spec::acuity_development_config()?),
+			"local" => Box::new(service::chain_spec::acuity_local_testnet_config()?),
+			"staging" => Box::new(service::chain_spec::acuity_staging_testnet_config()?),
+			"acuity" => Box::new(service::chain_spec::acuity_config()?),
 			path => {
 				let path = std::path::PathBuf::from(path);
 
-				let starts_with = |prefix: &str| {
-					path.file_name().map(|f| f.to_str().map(|s| s.starts_with(&prefix))).flatten().unwrap_or(false)
-				};
-
-				// When `force_*` is given or the file name starts with the name of one of the known chains,
-				// we use the chain spec for the specific chain.
-				if self.run.force_kusama || starts_with("kusama") {
-					Box::new(service::KusamaChainSpec::from_json_file(path)?)
-				} else if self.run.force_westend || starts_with("westend") {
-					Box::new(service::WestendChainSpec::from_json_file(path)?)
-				} else {
-					Box::new(service::PolkadotChainSpec::from_json_file(path)?)
-				}
+				Box::new(service::AcuityChainSpec::from_json_file(path)?)
 			},
 		})
 	}
 
-	fn native_runtime_version(spec: &Box<dyn service::ChainSpec>) -> &'static RuntimeVersion {
-		if spec.is_kusama() {
-			&service::kusama_runtime::VERSION
-		} else if spec.is_westend() {
-			&service::westend_runtime::VERSION
-		} else {
-			&service::polkadot_runtime::VERSION
-		}
+	fn native_runtime_version(_spec: &Box<dyn service::ChainSpec>) -> &'static RuntimeVersion {
+		&service::acuity_runtime::VERSION
 	}
-}
-
-fn set_default_ss58_version(spec: &Box<dyn service::ChainSpec>) {
-	use sp_core::crypto::Ss58AddressFormat;
-
-	let ss58_version = if spec.is_kusama() {
-		Ss58AddressFormat::KusamaAccount
-	} else if spec.is_westend() {
-		Ss58AddressFormat::SubstrateAccount
-	} else {
-		Ss58AddressFormat::PolkadotAccount
-	};
-
-	sp_core::crypto::set_default_ss58_version(ss58_version);
 }
 
 /// Parses polkadot specific CLI arguments and run the service.
 pub fn run() -> Result<()> {
 	let cli = Cli::from_args();
+
+	fn set_default_ss58_version(_spec: &Box<dyn service::ChainSpec>) {
+		use sp_core::crypto::Ss58AddressFormat;
+		sp_core::crypto::set_default_ss58_version(Ss58AddressFormat::SubstrateAccount);
+	};
 
 	match &cli.subcommand {
 		None => {
@@ -128,14 +92,6 @@ pub fn run() -> Result<()> {
 			} else {
 				Some((cli.run.grandpa_pause[0], cli.run.grandpa_pause[1]))
 			};
-
-			if chain_spec.is_kusama() {
-				info!("----------------------------");
-				info!("This chain is not in any way");
-				info!("      endorsed by the       ");
-				info!("     KUSAMA FOUNDATION      ");
-				info!("----------------------------");
-			}
 
 			runner.run_node_until_exit(|config| {
 				let role = config.role.clone();
@@ -167,14 +123,6 @@ pub fn run() -> Result<()> {
 			} else {
 				Some((cli.run.grandpa_pause[0], cli.run.grandpa_pause[1]))
 			};
-
-			if chain_spec.is_kusama() {
-				info!("----------------------------");
-				info!("This chain is not in any way");
-				info!("      endorsed by the       ");
-				info!("     KUSAMA FOUNDATION      ");
-				info!("----------------------------");
-			}
 
 			runner.async_run(|config| {
 				let chain_spec = config.chain_spec.cloned_box();
@@ -265,7 +213,7 @@ pub fn run() -> Result<()> {
 			set_default_ss58_version(chain_spec);
 
 			runner.sync_run(|config| {
-				cmd.run::<service::kusama_runtime::Block, service::KusamaExecutor>(config)
+				cmd.run::<service::acuity_runtime::Block, service::AcuityExecutor>(config)
 			})
 		},
 	}

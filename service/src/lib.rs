@@ -44,52 +44,29 @@ pub use sp_runtime::traits::{HashFor, NumberFor};
 pub use consensus_common::{SelectChain, BlockImport, block_validation::Chain};
 pub use polkadot_primitives::v0::{Block, CollatorId, ParachainHost};
 pub use sp_runtime::traits::{Block as BlockT, self as runtime_traits, BlakeTwo256};
-pub use chain_spec::{PolkadotChainSpec, KusamaChainSpec, WestendChainSpec};
+pub use chain_spec::AcuityChainSpec;
 #[cfg(feature = "full-node")]
 pub use consensus::run_validation_worker;
 pub use codec::Codec;
-pub use polkadot_runtime;
-pub use kusama_runtime;
-pub use westend_runtime;
+pub use acuity_runtime;
 pub use self::client::*;
 
 native_executor_instance!(
-	pub PolkadotExecutor,
-	polkadot_runtime::api::dispatch,
-	polkadot_runtime::native_version,
+	pub AcuityExecutor,
+	acuity_runtime::api::dispatch,
+	acuity_runtime::native_version,
 	frame_benchmarking::benchmarking::HostFunctions,
 );
 
-native_executor_instance!(
-	pub KusamaExecutor,
-	kusama_runtime::api::dispatch,
-	kusama_runtime::native_version,
-	frame_benchmarking::benchmarking::HostFunctions,
-);
-
-native_executor_instance!(
-	pub WestendExecutor,
-	westend_runtime::api::dispatch,
-	westend_runtime::native_version,
-	frame_benchmarking::benchmarking::HostFunctions,
-);
-
-/// Can be called for a `Configuration` to check if it is a configuration for the `Kusama` network.
+/// Can be called for a `Configuration` to check if it is a configuration for the `Acuity` network.
 pub trait IdentifyVariant {
-	/// Returns if this is a configuration for the `Kusama` network.
-	fn is_kusama(&self) -> bool;
-
-	/// Returns if this is a configuration for the `Westend` network.
-	fn is_westend(&self) -> bool;
+	/// Returns if this is a configuration for the `Acuity` network.
+	fn is_acuity(&self) -> bool;
 }
 
 impl IdentifyVariant for Box<dyn ChainSpec> {
-	fn is_kusama(&self) -> bool {
-		self.id().starts_with("kusama") || self.id().starts_with("ksm")
-	}
-
-	fn is_westend(&self) -> bool {
-		self.id().starts_with("westend") || self.id().starts_with("wnd")
+	fn is_acuity(&self) -> bool {
+		self.id().starts_with("acuity") || self.id().starts_with("acu")
 	}
 }
 
@@ -168,11 +145,7 @@ pub fn new_partial<RuntimeApi, Executor>(config: &mut Configuration, test: bool)
 		client.clone(),
 	);
 
-	let grandpa_hard_forks = if config.chain_spec.is_kusama() && !test {
-		crate::grandpa_support::kusama_hard_forks()
-	} else {
-		Vec::new()
-	};
+	let grandpa_hard_forks = Vec::new();
 
 	let (grandpa_block_import, grandpa_link) =
 		grandpa::block_import_with_authority_set_hard_forks(
@@ -496,31 +469,13 @@ pub fn new_full_nongeneric(
 	grandpa_pause: Option<(u32, u32)>,
 	test: bool,
 ) -> Result<NewFull<Client>, Error> {
-	if config.chain_spec.is_kusama() {
-		new_full::<kusama_runtime::RuntimeApi, KusamaExecutor>(
-			config,
-			collating_for,
-			authority_discovery_enabled,
-			grandpa_pause,
-			test,
-		).map(|full| full.with_client(Client::Kusama))
-	} else if config.chain_spec.is_westend() {
-		new_full::<westend_runtime::RuntimeApi, WestendExecutor>(
-			config,
-			collating_for,
-			authority_discovery_enabled,
-			grandpa_pause,
-			false,
-		).map(|full| full.with_client(Client::Westend))
-	} else {
-		new_full::<polkadot_runtime::RuntimeApi, PolkadotExecutor>(
-			config,
-			collating_for,
-			authority_discovery_enabled,
-			grandpa_pause,
-			false,
-		).map(|full| full.with_client(Client::Polkadot))
-	}
+	new_full::<acuity_runtime::RuntimeApi, AcuityExecutor>(
+		config,
+		collating_for,
+		authority_discovery_enabled,
+		grandpa_pause,
+		test,
+	).map(|full| full.with_client(Client::Acuity))
 }
 
 /// Builds a new service for a light client.
@@ -641,51 +596,14 @@ pub fn new_chain_ops(mut config: &mut Configuration) -> Result<
 > {
 	config.keystore = service::config::KeystoreConfig::InMemory;
 
-	if config.chain_spec.is_kusama() {
-		let service::PartialComponents { client, backend, import_queue, task_manager, .. }
-			= new_partial::<kusama_runtime::RuntimeApi, KusamaExecutor>(config, false)?;
-		Ok((Arc::new(Client::Kusama(client)), backend, import_queue, task_manager))
-	} else if config.chain_spec.is_westend() {
-		let service::PartialComponents { client, backend, import_queue, task_manager, .. }
-			= new_partial::<westend_runtime::RuntimeApi, WestendExecutor>(config, false)?;
-		Ok((Arc::new(Client::Westend(client)), backend, import_queue, task_manager))
-	} else {
-		let service::PartialComponents { client, backend, import_queue, task_manager, .. }
-			= new_partial::<polkadot_runtime::RuntimeApi, PolkadotExecutor>(config, false)?;
-		Ok((Arc::new(Client::Polkadot(client)), backend, import_queue, task_manager))
-	}
+	let service::PartialComponents { client, backend, import_queue, task_manager, .. }
+		= new_partial::<acuity_runtime::RuntimeApi, AcuityExecutor>(config, false)?;
+	Ok((Arc::new(Client::Acuity(client)), backend, import_queue, task_manager))
 }
 
-/// Create a new Polkadot service for a full node.
+/// Create a new Acuity service for a full node.
 #[cfg(feature = "full-node")]
-pub fn polkadot_new_full(
-	config: Configuration,
-	collating_for: Option<(CollatorId, parachain::Id)>,
-	authority_discovery_enabled: bool,
-	grandpa_pause: Option<(u32, u32)>,
-)
-	-> Result<(
-		TaskManager,
-		Arc<impl AbstractClient<Block, FullBackend>>,
-		FullNodeHandles,
-	), ServiceError>
-{
-	let NewFull {
-		task_manager, client, node_handles, ..
-	} = new_full::<polkadot_runtime::RuntimeApi, PolkadotExecutor>(
-		config,
-		collating_for,
-		authority_discovery_enabled,
-		grandpa_pause,
-		false,
-	)?;
-
-	Ok((task_manager, client, node_handles))
-}
-
-/// Create a new Kusama service for a full node.
-#[cfg(feature = "full-node")]
-pub fn kusama_new_full(
+pub fn acuity_new_full(
 	config: Configuration,
 	collating_for: Option<(CollatorId, parachain::Id)>,
 	authority_discovery_enabled: bool,
@@ -698,34 +616,7 @@ pub fn kusama_new_full(
 {
 	let NewFull {
 		task_manager, client, node_handles, ..
-	} = new_full::<kusama_runtime::RuntimeApi, KusamaExecutor>(
-		config,
-		collating_for,
-		authority_discovery_enabled,
-		grandpa_pause,
-		false,
-	)?;
-
-	Ok((task_manager, client, node_handles))
-}
-
-/// Create a new Westend service for a full node.
-#[cfg(feature = "full-node")]
-pub fn westend_new_full(
-	config: Configuration,
-	collating_for: Option<(CollatorId, parachain::Id)>,
-	authority_discovery_enabled: bool,
-	grandpa_pause: Option<(u32, u32)>,
-)
-	-> Result<(
-		TaskManager,
-		Arc<impl AbstractClient<Block, FullBackend>>,
-		FullNodeHandles,
-	), ServiceError>
-{
-	let NewFull {
-		task_manager, client, node_handles, ..
-	} = new_full::<westend_runtime::RuntimeApi, WestendExecutor>(
+	} = new_full::<acuity_runtime::RuntimeApi, AcuityExecutor>(
 		config,
 		collating_for,
 		authority_discovery_enabled,
@@ -744,13 +635,7 @@ pub struct FullNodeHandles;
 
 /// Build a new light node.
 pub fn build_light(config: Configuration) -> Result<(TaskManager, RpcHandlers), ServiceError> {
-	if config.chain_spec.is_kusama() {
-		new_light::<kusama_runtime::RuntimeApi, KusamaExecutor>(config)
-	} else if config.chain_spec.is_westend() {
-		new_light::<westend_runtime::RuntimeApi, WestendExecutor>(config)
-	} else {
-		new_light::<polkadot_runtime::RuntimeApi, PolkadotExecutor>(config)
-	}
+    new_light::<acuity_runtime::RuntimeApi, AcuityExecutor>(config)
 }
 
 /// Build a new full node.

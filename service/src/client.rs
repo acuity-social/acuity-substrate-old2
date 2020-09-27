@@ -97,7 +97,7 @@ impl<Block, Backend, Client> AbstractClient<Block, Backend> for Client
 
 /// Execute something with the client instance.
 ///
-/// As there exist multiple chains inside Polkadot, like Polkadot itself, Kusama, Westend etc,
+/// As there exist multiple chains inside Polkadot, like Polkadot itself, Acuity, Westend etc,
 /// there can exist different kinds of client types. As these client types differ in the generics
 /// that are being used, we can not easily return them from a function. For returning them from a
 /// function there exists [`Client`]. However, the problem on how to use this client instance still
@@ -138,21 +138,13 @@ pub trait ClientHandle {
 /// See [`ExecuteWithClient`] for more information.
 #[derive(Clone)]
 pub enum Client {
-	Polkadot(Arc<crate::FullClient<polkadot_runtime::RuntimeApi, crate::PolkadotExecutor>>),
-	Westend(Arc<crate::FullClient<westend_runtime::RuntimeApi, crate::WestendExecutor>>),
-	Kusama(Arc<crate::FullClient<kusama_runtime::RuntimeApi, crate::KusamaExecutor>>),
+	Acuity(Arc<crate::FullClient<acuity_runtime::RuntimeApi, crate::AcuityExecutor>>),
 }
 
 impl ClientHandle for Client {
 	fn execute_with<T: ExecuteWithClient>(&self, t: T) -> T::Output {
 		match self {
-			Self::Polkadot(client) => {
-				T::execute_with_client::<_, _, crate::FullBackend>(t, client.clone())
-			},
-			Self::Westend(client) => {
-				T::execute_with_client::<_, _, crate::FullBackend>(t, client.clone())
-			},
-			Self::Kusama(client) => {
+			Self::Acuity(client) => {
 				T::execute_with_client::<_, _, crate::FullBackend>(t, client.clone())
 			},
 		}
@@ -162,9 +154,7 @@ impl ClientHandle for Client {
 impl sc_client_api::UsageProvider<Block> for Client {
 	fn usage_info(&self) -> sc_client_api::ClientInfo<Block> {
 		match self {
-			Self::Polkadot(client) => client.usage_info(),
-			Self::Westend(client) => client.usage_info(),
-			Self::Kusama(client) => client.usage_info(),
+			Self::Acuity(client) => client.usage_info(),
 		}
 	}
 }
@@ -175,25 +165,19 @@ impl sc_client_api::BlockBackend<Block> for Client {
 		id: &BlockId<Block>
 	) -> sp_blockchain::Result<Option<Vec<<Block as BlockT>::Extrinsic>>> {
 		match self {
-			Self::Polkadot(client) => client.block_body(id),
-			Self::Westend(client) => client.block_body(id),
-			Self::Kusama(client) => client.block_body(id),
+			Self::Acuity(client) => client.block_body(id),
 		}
 	}
 
 	fn block(&self, id: &BlockId<Block>) -> sp_blockchain::Result<Option<SignedBlock<Block>>> {
 		match self {
-			Self::Polkadot(client) => client.block(id),
-			Self::Westend(client) => client.block(id),
-			Self::Kusama(client) => client.block(id),
+			Self::Acuity(client) => client.block(id),
 		}
 	}
 
 	fn block_status(&self, id: &BlockId<Block>) -> sp_blockchain::Result<BlockStatus> {
 		match self {
-			Self::Polkadot(client) => client.block_status(id),
-			Self::Westend(client) => client.block_status(id),
-			Self::Kusama(client) => client.block_status(id),
+			Self::Acuity(client) => client.block_status(id),
 		}
 	}
 
@@ -202,9 +186,7 @@ impl sc_client_api::BlockBackend<Block> for Client {
 		id: &BlockId<Block>
 	) -> sp_blockchain::Result<Option<Justification>> {
 		match self {
-			Self::Polkadot(client) => client.justification(id),
-			Self::Westend(client) => client.justification(id),
-			Self::Kusama(client) => client.justification(id),
+			Self::Acuity(client) => client.justification(id),
 		}
 	}
 
@@ -213,9 +195,7 @@ impl sc_client_api::BlockBackend<Block> for Client {
 		number: NumberFor<Block>
 	) -> sp_blockchain::Result<Option<<Block as BlockT>::Hash>> {
 		match self {
-			Self::Polkadot(client) => client.block_hash(number),
-			Self::Westend(client) => client.block_hash(number),
-			Self::Kusama(client) => client.block_hash(number),
+			Self::Acuity(client) => client.block_hash(number),
 		}
 	}
 }
@@ -227,9 +207,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key: &StorageKey,
 	) -> sp_blockchain::Result<Option<StorageData>> {
 		match self {
-			Self::Polkadot(client) => client.storage(id, key),
-			Self::Westend(client) => client.storage(id, key),
-			Self::Kusama(client) => client.storage(id, key),
+			Self::Acuity(client) => client.storage(id, key),
 		}
 	}
 
@@ -239,9 +217,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key_prefix: &StorageKey,
 	) -> sp_blockchain::Result<Vec<StorageKey>> {
 		match self {
-			Self::Polkadot(client) => client.storage_keys(id, key_prefix),
-			Self::Westend(client) => client.storage_keys(id, key_prefix),
-			Self::Kusama(client) => client.storage_keys(id, key_prefix),
+			Self::Acuity(client) => client.storage_keys(id, key_prefix),
 		}
 	}
 
@@ -251,9 +227,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key: &StorageKey,
 	) -> sp_blockchain::Result<Option<<Block as BlockT>::Hash>> {
 		match self {
-			Self::Polkadot(client) => client.storage_hash(id, key),
-			Self::Westend(client) => client.storage_hash(id, key),
-			Self::Kusama(client) => client.storage_hash(id, key),
+			Self::Acuity(client) => client.storage_hash(id, key),
 		}
 	}
 
@@ -263,9 +237,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key_prefix: &StorageKey,
 	) -> sp_blockchain::Result<Vec<(StorageKey, StorageData)>> {
 		match self {
-			Self::Polkadot(client) => client.storage_pairs(id, key_prefix),
-			Self::Westend(client) => client.storage_pairs(id, key_prefix),
-			Self::Kusama(client) => client.storage_pairs(id, key_prefix),
+			Self::Acuity(client) => client.storage_pairs(id, key_prefix),
 		}
 	}
 
@@ -276,9 +248,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		start_key: Option<&StorageKey>,
 	) -> sp_blockchain::Result<KeyIterator<'a, <crate::FullBackend as sc_client_api::Backend<Block>>::State, Block>> {
 		match self {
-			Self::Polkadot(client) => client.storage_keys_iter(id, prefix, start_key),
-			Self::Westend(client) => client.storage_keys_iter(id, prefix, start_key),
-			Self::Kusama(client) => client.storage_keys_iter(id, prefix, start_key),
+			Self::Acuity(client) => client.storage_keys_iter(id, prefix, start_key),
 		}
 	}
 
@@ -289,9 +259,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key: &StorageKey,
 	) -> sp_blockchain::Result<Option<StorageData>> {
 		match self {
-			Self::Polkadot(client) => client.child_storage(id, child_info, key),
-			Self::Westend(client) => client.child_storage(id, child_info, key),
-			Self::Kusama(client) => client.child_storage(id, child_info, key),
+			Self::Acuity(client) => client.child_storage(id, child_info, key),
 		}
 	}
 
@@ -302,9 +270,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key_prefix: &StorageKey,
 	) -> sp_blockchain::Result<Vec<StorageKey>> {
 		match self {
-			Self::Polkadot(client) => client.child_storage_keys(id, child_info, key_prefix),
-			Self::Westend(client) => client.child_storage_keys(id, child_info, key_prefix),
-			Self::Kusama(client) => client.child_storage_keys(id, child_info, key_prefix),
+			Self::Acuity(client) => client.child_storage_keys(id, child_info, key_prefix),
 		}
 	}
 
@@ -315,9 +281,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key: &StorageKey,
 	) -> sp_blockchain::Result<Option<<Block as BlockT>::Hash>> {
 		match self {
-			Self::Polkadot(client) => client.child_storage_hash(id, child_info, key),
-			Self::Westend(client) => client.child_storage_hash(id, child_info, key),
-			Self::Kusama(client) => client.child_storage_hash(id, child_info, key),
+			Self::Acuity(client) => client.child_storage_hash(id, child_info, key),
 		}
 	}
 
@@ -327,9 +291,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		last: BlockId<Block>,
 	) -> sp_blockchain::Result<Option<(NumberFor<Block>, BlockId<Block>)>> {
 		match self {
-			Self::Polkadot(client) => client.max_key_changes_range(first, last),
-			Self::Westend(client) => client.max_key_changes_range(first, last),
-			Self::Kusama(client) => client.max_key_changes_range(first, last),
+			Self::Acuity(client) => client.max_key_changes_range(first, last),
 		}
 	}
 
@@ -341,9 +303,7 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 		key: &StorageKey,
 	) -> sp_blockchain::Result<Vec<(NumberFor<Block>, u32)>> {
 		match self {
-			Self::Polkadot(client) => client.key_changes(first, last, storage_key, key),
-			Self::Westend(client) => client.key_changes(first, last, storage_key, key),
-			Self::Kusama(client) => client.key_changes(first, last, storage_key, key),
+			Self::Acuity(client) => client.key_changes(first, last, storage_key, key),
 		}
 	}
 }
@@ -351,25 +311,19 @@ impl sc_client_api::StorageProvider<Block, crate::FullBackend> for Client {
 impl sp_blockchain::HeaderBackend<Block> for Client {
 	fn header(&self, id: BlockId<Block>) -> sp_blockchain::Result<Option<<Block as BlockT>::Header>> {
 		match self {
-			Self::Polkadot(client) => client.header(&id),
-			Self::Westend(client) => client.header(&id),
-			Self::Kusama(client) => client.header(&id),
+			Self::Acuity(client) => client.header(&id),
 		}
 	}
 
 	fn info(&self) -> sp_blockchain::Info<Block> {
 		match self {
-			Self::Polkadot(client) => client.info(),
-			Self::Westend(client) => client.info(),
-			Self::Kusama(client) => client.info(),
+			Self::Acuity(client) => client.info(),
 		}
 	}
 
 	fn status(&self, id: BlockId<Block>) -> sp_blockchain::Result<sp_blockchain::BlockStatus> {
 		match self {
-			Self::Polkadot(client) => client.status(id),
-			Self::Westend(client) => client.status(id),
-			Self::Kusama(client) => client.status(id),
+			Self::Acuity(client) => client.status(id),
 		}
 	}
 
@@ -378,17 +332,13 @@ impl sp_blockchain::HeaderBackend<Block> for Client {
 		hash: <Block as BlockT>::Hash
 	) -> sp_blockchain::Result<Option<NumberFor<Block>>> {
 		match self {
-			Self::Polkadot(client) => client.number(hash),
-			Self::Westend(client) => client.number(hash),
-			Self::Kusama(client) => client.number(hash),
+			Self::Acuity(client) => client.number(hash),
 		}
 	}
-	
+
 	fn hash(&self, number: NumberFor<Block>) -> sp_blockchain::Result<Option<<Block as BlockT>::Hash>> {
 		match self {
-			Self::Polkadot(client) => client.hash(number),
-			Self::Westend(client) => client.hash(number),
-			Self::Kusama(client) => client.hash(number),
+			Self::Acuity(client) => client.hash(number),
 		}
 	}
 }

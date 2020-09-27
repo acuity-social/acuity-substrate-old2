@@ -13,11 +13,9 @@ futures = "0.3.4"
 slog = "2.5.2"
 hex-literal = "0.2.1"
 polkadot-primitives = { path = "../../primitives" }
-polkadot-runtime = { path = "../../runtime/polkadot" }
 polkadot-overseer = { path = "../overseer" }
 polkadot-subsystem = { package = "polkadot-node-subsystem", path = "../subsystem" }
-kusama-runtime = { path = "../../runtime/kusama" }
-westend-runtime = { path = "../../runtime/westend" }
+acuity-runtime = { path = "../../runtime/acuity" }
 polkadot-rpc = { path = "../../rpc" }
 polkadot-node-core-proposer = { path = "../core/proposer" }
 sp-io = { git = "https://github.com/paritytech/substrate", branch = "master" }
@@ -67,5 +65,5 @@ env_logger = "0.7.0"
 [features]
 default = ["db", "full-node"]
 db = ["service/db"]
-runtime-benchmarks = ["polkadot-runtime/runtime-benchmarks", "kusama-runtime/runtime-benchmarks", "westend-runtime/runtime-benchmarks"]
+runtime-benchmarks = ["acuity-runtime/runtime-benchmarks"]
 full-node = []

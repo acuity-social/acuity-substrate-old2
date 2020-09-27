@@ -1,10 +1,10 @@
 [[bin]]
-name = "polkadot"
+name = "acuity"
 path = "src/main.rs"
 
 [package]
-name = "polkadot"
-description = "Implementation of a https://polkadot.network node in Rust based on the Substrate framework."
+name = "acuity"
+description = "Implementation of a https://acuity.social node in Rust based on the Substrate framework."
 license = "GPL-3.0-only"
 version = "0.8.24"
 authors = ["Parity Technologies <admin@parity.io>"]
@@ -30,10 +30,7 @@ members = [
 	"primitives",
 	"runtime/common",
 	"runtime/parachains",
-	"runtime/polkadot",
-	"runtime/kusama",
-	"runtime/rococo-v1",
-	"runtime/westend",
+	"runtime/acuity",
 	"runtime/test-runtime",
 	"runtime/test-runtime/client",
 	"service",
