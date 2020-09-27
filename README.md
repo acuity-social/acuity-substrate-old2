@@ -1,4 +1,4 @@
-# Polkadot
+# Acuity Social
 
 Implementation of a https://acuity.social node in Rust based on the Substrate framework.
 
