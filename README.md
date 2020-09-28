@@ -53,7 +53,7 @@ cargo build --release
 Connect to the global Acuity network by running:
 
 ```bash
-./target/release/polkadot --chain=kusama
+./target/release/acuity
 ```
 
 ## License
