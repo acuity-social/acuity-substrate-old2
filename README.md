@@ -10,14 +10,6 @@ specific guides, like how to be a validator, see the
 
 ## Building
 
-### Install via Cargo
-
-If you want to install Polkadot in your PATH, you can do so with with:
-
-```bash
-cargo install --git https://github.com/acuity-social/acuity-substrate --tag <version> acuity
-```
-
 ### Build from Source
 
 If you'd like to build from source, first install Rust. You may need to add Cargo's bin directory
@@ -53,7 +45,7 @@ cargo build --release
 Connect to the global Acuity network by running:
 
 ```bash
-./target/release/polkadot --chain=kusama
+./target/release/acuity
 ```
 
 ## License
