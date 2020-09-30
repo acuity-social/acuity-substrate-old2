@@ -37,6 +37,7 @@ members = [
 	"statement-table",
 	"service",
 	"validation",
+	"xcm",
 
 	"node/collation-generation",
 	"node/core/av-store",
