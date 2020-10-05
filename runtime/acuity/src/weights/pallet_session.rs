@@ -13,7 +13,7 @@
 
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
-//! Weights for pallet_timestamp
+//! Weights for pallet_session
 //! THIS FILE WAS AUTO-GENERATED USING THE SUBSTRATE BENCHMARK CLI VERSION 2.0.0
 //! DATE: 2020-09-28, STEPS: [50], REPEAT: 20, LOW RANGE: [], HIGH RANGE: []
 
@@ -24,15 +24,15 @@ use frame_support::{traits::Get, weights::Weight};
 use sp_std::marker::PhantomData;
 
 pub struct WeightInfo<T>(PhantomData<T>);
-impl<T: frame_system::Trait> pallet_timestamp::WeightInfo for WeightInfo<T> {
-	// WARNING! Some components were not used: ["t"]
-	fn set() -> Weight {
-		(10_860_000 as Weight)
-			.saturating_add(T::DbWeight::get().reads(2 as Weight))
-			.saturating_add(T::DbWeight::get().writes(1 as Weight))
+impl<T: frame_system::Trait> pallet_session::WeightInfo for WeightInfo<T> {
+	fn set_keys() -> Weight {
+		(87_465_000 as Weight)
+			.saturating_add(T::DbWeight::get().reads(7 as Weight))
+			.saturating_add(T::DbWeight::get().writes(6 as Weight))
 	}
-	// WARNING! Some components were not used: ["t"]
-	fn on_finalize() -> Weight {
-		(6_055_000 as Weight)
+	fn purge_keys() -> Weight {
+		(52_357_000 as Weight)
+			.saturating_add(T::DbWeight::get().reads(2 as Weight))
+			.saturating_add(T::DbWeight::get().writes(6 as Weight))
 	}
 }
