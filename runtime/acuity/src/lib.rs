@@ -88,7 +88,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	spec_name: create_runtime_str!("acuity"),
 	impl_name: create_runtime_str!("acuity-substrate"),
 	authoring_version: 0,
-	spec_version: 0,
+	spec_version: 1,
 	impl_version: 0,
 	#[cfg(not(feature = "disable-runtime-api"))]
 	apis: RUNTIME_API_VERSIONS,

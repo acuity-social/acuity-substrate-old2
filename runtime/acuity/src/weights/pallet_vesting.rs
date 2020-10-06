@@ -26,38 +26,38 @@ use sp_std::marker::PhantomData;
 pub struct WeightInfo<T>(PhantomData<T>);
 impl<T: frame_system::Trait> pallet_vesting::WeightInfo for WeightInfo<T> {
 	fn vest_locked(l: u32, ) -> Weight {
-		(54_300_000 as Weight)
-			.saturating_add((210_000 as Weight).saturating_mul(l as Weight))
+		(53_650_000 as Weight)
+			.saturating_add((208_000 as Weight).saturating_mul(l as Weight))
 			.saturating_add(T::DbWeight::get().reads(2 as Weight))
 			.saturating_add(T::DbWeight::get().writes(1 as Weight))
 	}
 	fn vest_unlocked(l: u32, ) -> Weight {
-		(57_381_000 as Weight)
-			.saturating_add((104_000 as Weight).saturating_mul(l as Weight))
+		(56_936_000 as Weight)
+			.saturating_add((106_000 as Weight).saturating_mul(l as Weight))
 			.saturating_add(T::DbWeight::get().reads(2 as Weight))
 			.saturating_add(T::DbWeight::get().writes(2 as Weight))
 	}
 	fn vest_other_locked(l: u32, ) -> Weight {
-		(54_130_000 as Weight)
-			.saturating_add((215_000 as Weight).saturating_mul(l as Weight))
+		(53_483_000 as Weight)
+			.saturating_add((209_000 as Weight).saturating_mul(l as Weight))
 			.saturating_add(T::DbWeight::get().reads(3 as Weight))
 			.saturating_add(T::DbWeight::get().writes(2 as Weight))
 	}
 	fn vest_other_unlocked(l: u32, ) -> Weight {
-		(57_208_000 as Weight)
-			.saturating_add((101_000 as Weight).saturating_mul(l as Weight))
+		(56_512_000 as Weight)
+			.saturating_add((106_000 as Weight).saturating_mul(l as Weight))
 			.saturating_add(T::DbWeight::get().reads(3 as Weight))
 			.saturating_add(T::DbWeight::get().writes(3 as Weight))
 	}
 	fn vested_transfer(l: u32, ) -> Weight {
-		(117_560_000 as Weight)
-			.saturating_add((249_000 as Weight).saturating_mul(l as Weight))
+		(117_377_000 as Weight)
+			.saturating_add((247_000 as Weight).saturating_mul(l as Weight))
 			.saturating_add(T::DbWeight::get().reads(3 as Weight))
 			.saturating_add(T::DbWeight::get().writes(3 as Weight))
 	}
 	fn force_vested_transfer(l: u32, ) -> Weight {
-		(116_476_000 as Weight)
-			.saturating_add((253_000 as Weight).saturating_mul(l as Weight))
+		(116_623_000 as Weight)
+			.saturating_add((249_000 as Weight).saturating_mul(l as Weight))
 			.saturating_add(T::DbWeight::get().reads(4 as Weight))
 			.saturating_add(T::DbWeight::get().writes(4 as Weight))
 	}
