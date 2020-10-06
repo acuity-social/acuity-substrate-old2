@@ -1,7 +1,5 @@
 # Acuity Social
 
-**This implementation is not ready yet, please use https://github.com/acuity-social/acuity-substrate-old**
-
 Implementation of a https://acuity.social node in Rust based on the Substrate framework.
 
 
