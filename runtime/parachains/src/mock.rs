@@ -30,7 +30,7 @@ use frame_support::{
 	weights::Weight, traits::Randomness as RandomnessT,
 };
 use crate::inclusion;
-use crate::paras;
+use crate as parachains;
 
 /// A test runtime struct.
 #[derive(Clone, Eq, PartialEq)]
@@ -38,7 +38,7 @@ pub struct Test;
 
 impl_outer_origin! {
 	pub enum Origin for Test {
-		paras
+		parachains
 	}
 }
 
@@ -128,8 +128,6 @@ pub type Configuration = crate::configuration::Module<Test>;
 pub type Paras = crate::paras::Module<Test>;
 
 /// Mocked router.
-// TODO: Will be used in the follow ups.
-#[allow(dead_code)]
 pub type Router = crate::router::Module<Test>;
 
 /// Mocked scheduler.

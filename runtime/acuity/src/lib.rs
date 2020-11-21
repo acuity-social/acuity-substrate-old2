@@ -18,19 +18,19 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
-#![recursion_limit="256"]
+#![recursion_limit = "256"]
 
 use sp_std::prelude::*;
 use sp_core::u32_trait::{_1, _2, _3, _4, _5};
 use codec::{Encode, Decode};
 use primitives::v1::{
-	AccountId, AccountIndex, Balance, BlockNumber, Hash, Nonce, Signature, Moment, ValidatorId,
-	ValidatorIndex, CoreState, Id, CandidateEvent, ValidationData, OccupiedCoreAssumption,
-	CommittedCandidateReceipt, PersistedValidationData, GroupRotationInfo, ValidationCode,
+	AccountId, AccountIndex, Balance, BlockNumber, CandidateEvent, CommittedCandidateReceipt,
+	CoreState, GroupRotationInfo, Hash, Id, Moment, Nonce, OccupiedCoreAssumption,
+	PersistedValidationData, Signature, ValidationCode, ValidationData, ValidatorId, ValidatorIndex,
 };
 use runtime_common::{
-	claims, SlowAdjustingFeeUpdate,
-	impls::{CurrencyToVoteHandler, ToAuthor},
+	claims, SlowAdjustingFeeUpdate, CurrencyToVote,
+	impls::ToAuthor,
 	NegativeImbalance, BlockHashCount, MaximumBlockWeight, AvailableBlockRatio,
 	MaximumBlockLength, BlockExecutionWeight, ExtrinsicBaseWeight, RocksDbWeight,
 	MaximumExtrinsicWeight, ParachainSessionKeyPlaceholder,
@@ -346,7 +346,7 @@ type SlashCancelOrigin = EnsureOneOf<
 impl pallet_staking::Trait for Runtime {
 	type Currency = Balances;
 	type UnixTime = Timestamp;
-	type CurrencyToVote = CurrencyToVoteHandler<Self>;
+	type CurrencyToVote = CurrencyToVote;
 	type RewardRemainder = Treasury;
 	type Event = Event;
 	type Slash = Treasury;
@@ -469,7 +469,7 @@ impl pallet_elections_phragmen::Trait for Runtime {
 	type Currency = Balances;
 	type ChangeMembers = Council;
 	type InitializeMembers = Council;
-	type CurrencyToVote = CurrencyToVoteHandler<Self>;
+	type CurrencyToVote = frame_support::traits::U128CurrencyToVote;
 	type CandidacyBond = CandidacyBond;
 	type VotingBond = VotingBond;
 	type LoserCandidate = Treasury;
@@ -611,17 +611,6 @@ impl pallet_grandpa::Trait for Runtime {
 	type HandleEquivocation = pallet_grandpa::EquivocationHandler<Self::KeyOwnerIdentification, Offences>;
 
 	type WeightInfo = ();
-}
-
-parameter_types! {
-	pub WindowSize: BlockNumber = pallet_finality_tracker::DEFAULT_WINDOW_SIZE.into();
-	pub ReportLatency: BlockNumber = pallet_finality_tracker::DEFAULT_REPORT_LATENCY.into();
-}
-
-impl pallet_finality_tracker::Trait for Runtime {
-	type OnFinalizationStalled = ();
-	type WindowSize = WindowSize;
-	type ReportLatency = ReportLatency;
 }
 
 /// Submits transaction with the node's public and signature type. Adheres to the signed extension
@@ -834,7 +823,6 @@ impl InstanceFilter<Call> for ProxyType {
 				Call::Staking(..) |
 				Call::Offences(..) |
 				Call::Session(..) |
-				Call::FinalityTracker(..) |
 				Call::Grandpa(..) |
 				Call::ImOnline(..) |
 				Call::AuthorityDiscovery(..) |
@@ -863,15 +851,21 @@ impl InstanceFilter<Call> for ProxyType {
 				Call::Multisig(..)
 			),
 			ProxyType::Governance => matches!(c,
-				Call::Democracy(..) | Call::Council(..) | Call::TechnicalCommittee(..)
-					| Call::ElectionsPhragmen(..) | Call::Treasury(..) | Call::Utility(..)
+				Call::Democracy(..) |
+				Call::Council(..) |
+				Call::TechnicalCommittee(..) |
+				Call::ElectionsPhragmen(..) |
+				Call::Treasury(..) |
+				Call::Utility(..)
 			),
 			ProxyType::Staking => matches!(c,
-				Call::Staking(..) | Call::Utility(..)
+				Call::Staking(..) |
+				Call::Session(..) |
+				Call::Utility(..)
 			),
 			ProxyType::IdentityJudgement => matches!(c,
-				Call::Identity(pallet_identity::Call::provide_judgement(..))
-				| Call::Utility(pallet_utility::Call::batch(..))
+				Call::Identity(pallet_identity::Call::provide_judgement(..)) |
+				Call::Utility(..)
 			)
 		}
 	}
@@ -904,34 +898,7 @@ impl pallet_proxy::Trait for Runtime {
 pub struct CustomOnRuntimeUpgrade;
 impl frame_support::traits::OnRuntimeUpgrade for CustomOnRuntimeUpgrade {
 	fn on_runtime_upgrade() -> frame_support::weights::Weight {
-		// Update scheduler origin usage
-		#[derive(Encode, Decode)]
-		#[allow(non_camel_case_types)]
-		pub enum OldOriginCaller {
-			system(frame_system::Origin<Runtime>),
-			pallet_collective_Instance1(
-				pallet_collective::Origin<Runtime, pallet_collective::Instance1>
-			),
-			pallet_collective_Instance2(
-				pallet_collective::Origin<Runtime, pallet_collective::Instance2>
-			),
-		}
-
-		impl Into<OriginCaller> for OldOriginCaller {
-			fn into(self) -> OriginCaller {
-				match self {
-					OldOriginCaller::system(o) => OriginCaller::system(o),
-					OldOriginCaller::pallet_collective_Instance1(o) =>
-						OriginCaller::pallet_collective_Instance1(o),
-					OldOriginCaller::pallet_collective_Instance2(o) =>
-						OriginCaller::pallet_collective_Instance2(o),
-				}
-			}
-		}
-
-		pallet_scheduler::Module::<Runtime>::migrate_origin::<OldOriginCaller>();
-
-		<Runtime as frame_system::Trait>::MaximumBlockWeight::get()
+		0
 	}
 }
 
@@ -959,7 +926,6 @@ construct_runtime! {
 		Offences: pallet_offences::{Module, Call, Storage, Event} = 7,
 		Historical: session_historical::{Module} = 34,
 		Session: pallet_session::{Module, Call, Storage, Event, Config<T>} = 8,
-		FinalityTracker: pallet_finality_tracker::{Module, Call, Storage, Inherent} = 9,
 		Grandpa: pallet_grandpa::{Module, Call, Storage, Config, Event, ValidateUnsigned} = 10,
 		ImOnline: pallet_im_online::{Module, Call, Storage, Event<T>, ValidateUnsigned, Config<T>} = 11,
 		AuthorityDiscovery: pallet_authority_discovery::{Module, Call, Config} = 12,
@@ -1121,6 +1087,12 @@ sp_api::impl_runtime_apis! {
 			-> Option<PersistedValidationData<BlockNumber>> {
 			None
 		}
+		fn check_validation_outputs(
+			_: Id,
+			_: primitives::v1::ValidationOutputs,
+		) -> bool {
+			false
+		}
 
 		fn session_index_for_child() -> SessionIndex {
 			0
@@ -1135,6 +1107,16 @@ sp_api::impl_runtime_apis! {
 		}
 
 		fn candidate_events() -> Vec<CandidateEvent<Hash>> {
+			Vec::new()
+		}
+
+		fn validator_discovery(_: Vec<ValidatorId>) -> Vec<Option<AuthorityDiscoveryId>> {
+			Vec::new()
+		}
+
+		fn dmq_contents(
+			_recipient: Id,
+		) -> Vec<primitives::v1::InboundDownwardMessage<BlockNumber>> {
 			Vec::new()
 		}
 	}
@@ -1308,5 +1290,77 @@ sp_api::impl_runtime_apis! {
 			if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
 			Ok(batches)
 		}
+	}
+}
+
+#[cfg(test)]
+mod test_fees {
+	use super::*;
+	use frame_support::weights::WeightToFeePolynomial;
+	use frame_support::storage::StorageValue;
+	use sp_runtime::FixedPointNumber;
+	use frame_support::weights::GetDispatchInfo;
+	use codec::Encode;
+	use pallet_transaction_payment::Multiplier;
+	use separator::Separatable;
+
+
+	#[test]
+	#[ignore]
+	fn block_cost() {
+		let raw_fee = WeightToFee::calc(&MaximumBlockWeight::get());
+
+		println!(
+			"Full Block weight == {} // WeightToFee(full_block) == {} plank",
+			MaximumBlockWeight::get(),
+			raw_fee.separated_string(),
+		);
+	}
+
+	#[test]
+	#[ignore]
+	fn transfer_cost_min_multiplier() {
+		let min_multiplier = runtime_common::MinimumMultiplier::get();
+		let call = <pallet_balances::Call<Runtime>>::transfer_keep_alive(Default::default(), Default::default());
+		let info = call.get_dispatch_info();
+		// convert to outer call.
+		let call = Call::Balances(call);
+		let len = call.using_encoded(|e| e.len()) as u32;
+
+		let mut ext = sp_io::TestExternalities::new_empty();
+		ext.execute_with(|| {
+			pallet_transaction_payment::NextFeeMultiplier::put(min_multiplier);
+			let fee = TransactionPayment::compute_fee(len, &info, 0);
+			println!(
+				"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
+				info.weight.separated_string(),
+				pallet_transaction_payment::NextFeeMultiplier::get(),
+				fee.separated_string(),
+			);
+		});
+
+		ext.execute_with(|| {
+			let mul = Multiplier::saturating_from_rational(1, 1000_000_000u128);
+			pallet_transaction_payment::NextFeeMultiplier::put(mul);
+			let fee = TransactionPayment::compute_fee(len, &info, 0);
+			println!(
+				"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
+				info.weight.separated_string(),
+				pallet_transaction_payment::NextFeeMultiplier::get(),
+				fee.separated_string(),
+			);
+		});
+
+		ext.execute_with(|| {
+			let mul = Multiplier::saturating_from_rational(1, 1u128);
+			pallet_transaction_payment::NextFeeMultiplier::put(mul);
+			let fee = TransactionPayment::compute_fee(len, &info, 0);
+			println!(
+				"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
+				info.weight.separated_string(),
+				pallet_transaction_payment::NextFeeMultiplier::get(),
+				fee.separated_string(),
+			);
+		});
 	}
 }
