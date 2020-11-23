@@ -72,10 +72,6 @@ pub struct RunCmd {
 	#[structopt(long = "force-acuity")]
 	pub force_acuity: bool,
 
-	/// Force using Rococo native runtime.
-	#[structopt(long = "force-rococo")]
-	pub force_rococo: bool,
-
 	/// Disable the authority discovery module on validator or sentry nodes.
 	///
 	/// Enabled by default on validator and sentry nodes. Always disabled on non
