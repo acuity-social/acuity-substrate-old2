@@ -895,6 +895,11 @@ impl pallet_proxy::Trait for Runtime {
 	type AnnouncementDepositFactor = AnnouncementDepositFactor;
 }
 
+impl pallet_sudo::Trait for Runtime {
+	type Event = Event;
+	type Call = Call;
+}
+
 pub struct CustomOnRuntimeUpgrade;
 impl frame_support::traits::OnRuntimeUpgrade for CustomOnRuntimeUpgrade {
 	fn on_runtime_upgrade() -> frame_support::weights::Weight {
@@ -964,6 +969,9 @@ construct_runtime! {
 
 		// Multisig module. Late addition.
 		Multisig: pallet_multisig::{Module, Call, Storage, Event<T>} = 31,
+
+		// Sudo module.
+		Sudo: pallet_sudo::{Module, Call, Storage, Event<T>, Config<T>} = 35,
 	}
 }
 

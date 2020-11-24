@@ -250,6 +250,9 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 			vesting: vec![],
 		}),
 		pallet_vesting: Some(acuity::VestingConfig { vesting: vec![] }),
+		pallet_sudo: Some(acuity::SudoConfig {
+			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
+		}),
 	}
 }
 
@@ -418,6 +421,9 @@ pub fn acuity_testnet_genesis(
 			vesting: vec![],
 		}),
 		pallet_vesting: Some(acuity::VestingConfig { vesting: vec![] }),
+		pallet_sudo: Some(acuity::SudoConfig {
+			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
+		}),
 	}
 }
 
