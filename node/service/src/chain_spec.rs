@@ -30,6 +30,7 @@ use serde::{Deserialize, Serialize};
 use sp_core::{crypto::UncheckedInto, sr25519, Pair, Public};
 use sp_runtime::{traits::IdentifyAccount, Perbill};
 use telemetry::TelemetryEndpoints;
+use std::collections::BTreeMap;
 
 const ACUITY_STAGING_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const DEFAULT_PROTOCOL_ID: &str = "acu";
@@ -253,6 +254,9 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 		pallet_sudo: Some(acuity::SudoConfig {
 			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
 		}),
+		pallet_evm: Some(acuity::EVMConfig {
+			accounts: BTreeMap::new(),
+		}),
 	}
 }
 
@@ -423,6 +427,9 @@ pub fn acuity_testnet_genesis(
 		pallet_vesting: Some(acuity::VestingConfig { vesting: vec![] }),
 		pallet_sudo: Some(acuity::SudoConfig {
 			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
+		}),
+		pallet_evm: Some(acuity::EVMConfig {
+			accounts: BTreeMap::new(),
 		}),
 	}
 }

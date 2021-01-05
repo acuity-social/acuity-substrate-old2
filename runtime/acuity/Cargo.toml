@@ -64,6 +64,7 @@ pallet-treasury = { git = "https://github.com/paritytech/substrate", rev = "668e
 pallet-utility = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false }
 pallet-vesting = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false }
 pallet-sudo = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false }
+pallet-evm = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false }
 
 frame-benchmarking = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false, optional = true }
 pallet-offences-benchmarking = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false, optional = true }
@@ -138,6 +139,7 @@ std = [
 	"pallet-utility/std",
 	"pallet-vesting/std",
 	"pallet-sudo/std",
+	"pallet-evm/std",
 	"serde_derive",
 	"serde/std",
 	"log",

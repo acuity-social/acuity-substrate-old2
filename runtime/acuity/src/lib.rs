@@ -64,6 +64,7 @@ use authority_discovery_primitives::AuthorityId as AuthorityDiscoveryId;
 use pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo;
 use pallet_session::{historical as session_historical};
 use static_assertions::const_assert;
+use pallet_evm::{EnsureAddressTruncated, HashedAddressMapping};
 
 #[cfg(feature = "std")]
 pub use pallet_staking::StakerStatus;
@@ -900,6 +901,21 @@ impl pallet_sudo::Trait for Runtime {
 	type Call = Call;
 }
 
+parameter_types! {
+	pub const LeetChainId: u64 = 1337;
+}
+
+impl pallet_evm::Trait for Runtime {
+	type FeeCalculator = ();
+	type CallOrigin = EnsureAddressTruncated;
+	type WithdrawOrigin = EnsureAddressTruncated;
+	type AddressMapping = HashedAddressMapping<BlakeTwo256>;
+	type Currency = Balances;
+	type Event = Event;
+	type Precompiles = ();
+	type ChainId = LeetChainId;
+}
+
 pub struct CustomOnRuntimeUpgrade;
 impl frame_support::traits::OnRuntimeUpgrade for CustomOnRuntimeUpgrade {
 	fn on_runtime_upgrade() -> frame_support::weights::Weight {
@@ -972,6 +988,9 @@ construct_runtime! {
 
 		// Sudo module.
 		Sudo: pallet_sudo::{Module, Call, Storage, Event<T>, Config<T>} = 35,
+
+		// EVM module.
+		EVM: pallet_evm::{Module, Call, Storage, Config, Event<T>} = 36,
 	}
 }
 
