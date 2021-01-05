@@ -10,15 +10,15 @@ log = "0.4.8"
 polkadot-node-subsystem = { path = "../../subsystem" }
 polkadot-overseer = { path = "../../overseer" }
 polkadot-primitives = { path = "../../../primitives" }
-sc-basic-authorship = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sc-block-builder = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sc-client-api = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-api = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-blockchain = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-consensus = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-core = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-inherents = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "master" }
-sp-transaction-pool = { git = "https://github.com/paritytech/substrate", branch = "master" }
-prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", branch = "master" }
+sc-basic-authorship = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sc-block-builder = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-api = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-core = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
 wasm-timer = "0.2.4"
