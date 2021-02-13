@@ -1,6 +1,6 @@
 [package]
 name = "polkadot-cli"
-version = "0.8.26-2"
+version = "0.8.28-1"
 authors = ["Parity Technologies <admin@parity.io>"]
 description = "Polkadot Relay-chain Client Node"
 edition = "2018"
@@ -14,29 +14,33 @@ wasm-opt = false
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-log = "0.4.11"
-structopt = { version = "0.3.8", optional = true }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sc-tracing = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+log = "0.4.13"
+thiserror = "1.0.23"
+structopt = { version = "0.3.21", optional = true }
+wasm-bindgen = { version = "0.2.69", optional = true }
+wasm-bindgen-futures = { version = "0.4.19", optional = true }
+futures = "0.3.12"
+
 service = { package = "polkadot-service", path = "../node/service", default-features = false, optional = true }
+polkadot-parachain = { path = "../parachain", optional = true }
 
-frame-benchmarking-cli = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", optional = true }
-sc-cli = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", optional = true }
-sc-service = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", optional = true }
+sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+tracing-futures = "0.2.4"
+frame-benchmarking-cli = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28", optional = true }
+sc-cli = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28", optional = true }
+sc-service = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28", optional = true }
+browser-utils = { package = "substrate-browser-utils", git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28", optional = true }
 
-wasm-bindgen = { version = "0.2.57", optional = true }
-wasm-bindgen-futures = { version = "0.4.7", optional = true }
-browser-utils = { package = "substrate-browser-utils", git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", optional = true }
 # this crate is used only to enable `trie-memory-tracker` feature
 # see https://github.com/paritytech/substrate/pull/6745
-sp-trie = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652", default-features = false }
+sp-trie = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28", default-features = false }
 
 [build-dependencies]
-substrate-build-script-utils = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
+substrate-build-script-utils = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 
 [features]
-default = [ "wasmtime", "db", "cli", "full-node", "trie-memory-tracker" ]
-wasmtime = [ "sc-cli/wasmtime" ]
+default = [ "wasmtime", "db", "cli", "full-node", "trie-memory-tracker", "polkadot-parachain" ]
+wasmtime = [ "sc-cli/wasmtime", "polkadot-parachain/wasmtime" ]
 db = [ "service/db" ]
 cli = [
 	"structopt",
@@ -53,3 +57,4 @@ browser = [
 runtime-benchmarks = [ "service/runtime-benchmarks" ]
 trie-memory-tracker = [ "sp-trie/memory-tracker" ]
 full-node = [ "service/full-node" ]
+real-overseer = [ "service/real-overseer" ]

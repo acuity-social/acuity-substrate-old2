@@ -14,37 +14,32 @@
 // You should have received a copy of the GNU General Public License
 // along with Polkadot.  If not, see <http://www.gnu.org/licenses/>.
 
-use std::collections::{HashMap, HashSet};
-use std::time::Duration;
-use std::task::Poll;
+use std::{collections::{HashMap, HashSet}, time::Duration, task::Poll, sync::Arc};
 
 use futures::{
 	StreamExt,
+	FutureExt,
 	channel::oneshot,
 	future::BoxFuture,
 	stream::FuturesUnordered,
 };
-use log::{trace, warn};
 
 use polkadot_primitives::v1::{
 	Id as ParaId, CandidateReceipt, CollatorId, Hash, PoV,
 };
 use polkadot_subsystem::{
+	jaeger, PerLeafSpan, JaegerSpan,
 	FromOverseer, OverseerSignal, SubsystemContext,
 	messages::{
 		AllMessages, CandidateSelectionMessage, CollatorProtocolMessage, NetworkBridgeMessage,
 	},
 };
 use polkadot_node_network_protocol::{
-	v1 as protocol_v1, View, PeerId, ReputationChange as Rep, RequestId,
-	NetworkBridgeEvent,
+	v1 as protocol_v1, View, OurView, PeerId, ReputationChange as Rep, RequestId, NetworkBridgeEvent,
 };
-use polkadot_node_subsystem_util::{
-	TimeoutExt as _,
-	metrics::{self, prometheus},
-};
+use polkadot_node_subsystem_util::{TimeoutExt as _, metrics::{self, prometheus}};
 
-use super::{modify_reputation, TARGET, Result};
+use super::{modify_reputation, LOG_TARGET, Result};
 
 const COST_UNEXPECTED_MESSAGE: Rep = Rep::new(-10, "An unexpected message");
 const COST_REQUEST_TIMED_OUT: Rep = Rep::new(-20, "A collation request has timed out");
@@ -63,11 +58,23 @@ impl Metrics {
 			}
 		}
 	}
+
+	/// Provide a timer for `process_msg` which observes on drop.
+	fn time_process_msg(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
+		self.0.as_ref().map(|metrics| metrics.process_msg.start_timer())
+	}
+
+	/// Provide a timer for `handle_collation_request_result` which observes on drop.
+	fn time_handle_collation_request_result(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
+		self.0.as_ref().map(|metrics| metrics.handle_collation_request_result.start_timer())
+	}
 }
 
 #[derive(Clone)]
 struct MetricsInner {
 	collation_requests: prometheus::CounterVec<prometheus::U64>,
+	process_msg: prometheus::Histogram,
+	handle_collation_request_result: prometheus::Histogram,
 }
 
 impl metrics::Metrics for Metrics {
@@ -84,7 +91,25 @@ impl metrics::Metrics for Metrics {
 					&["success"],
 				)?,
 				registry,
-			)?
+			)?,
+			process_msg: prometheus::register(
+				prometheus::Histogram::with_opts(
+					prometheus::HistogramOpts::new(
+						"parachain_collator_protocol_validator_process_msg",
+						"Time spent within `collator_protocol_validator::process_msg`",
+					)
+				)?,
+				registry,
+			)?,
+			handle_collation_request_result: prometheus::register(
+				prometheus::Histogram::with_opts(
+					prometheus::HistogramOpts::new(
+						"parachain_collator_protocol_validator_handle_collation_request_result",
+						"Time spent within `collator_protocol_validator::handle_collation_request_result`",
+					)
+				)?,
+				registry,
+			)?,
 		};
 
 		Ok(Metrics(Some(metrics)))
@@ -122,7 +147,6 @@ impl CollationRequest {
 			request_id,
 		} = self;
 
-
 		match received.timeout(timeout).await {
 			None => Timeout(request_id),
 			Some(_) => Received(request_id),
@@ -142,7 +166,7 @@ struct PerRequest {
 #[derive(Default)]
 struct State {
 	/// Our own view.
-	view: View,
+	view: OurView,
 
 	/// Track all active collators and their views.
 	peer_views: HashMap<PeerId, View>,
@@ -185,9 +209,13 @@ struct State {
 
 	/// Metrics.
 	metrics: Metrics,
+
+	/// Span per relay parent.
+	span_per_relay_parent: HashMap<Hash, PerLeafSpan>,
 }
 
 /// Another subsystem has requested to fetch collations on a particular leaf for some para.
+#[tracing::instrument(level = "trace", skip(ctx, state, tx), fields(subsystem = LOG_TARGET))]
 async fn fetch_collation<Context>(
 	ctx: &mut Context,
 	state: &mut State,
@@ -195,7 +223,7 @@ async fn fetch_collation<Context>(
 	collator_id: CollatorId,
 	para_id: ParaId,
 	tx: oneshot::Sender<(CandidateReceipt, PoV)>
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
@@ -206,12 +234,13 @@ where
 				if let Err(e) = tx.send((collation.1.clone(), collation.2.clone())) {
 					// We do not want this to be fatal because the receving subsystem
 					// may have closed the results channel for some reason.
-					trace!(
-						target: TARGET,
-						"Failed to send collation: {:?}", e,
+					tracing::trace!(
+						target: LOG_TARGET,
+						err = ?e,
+						"Failed to send collation",
 					);
 				}
-				return Ok(());
+				return;
 			}
 		}
 	}
@@ -231,18 +260,17 @@ where
 	// Request the collation.
 	// Assume it is `request_collation`'s job to check and ignore duplicate requests.
 	if let Some(relevant_advertiser) = relevant_advertiser {
-		request_collation(ctx, state, relay_parent, para_id, relevant_advertiser, tx).await?;
+		request_collation(ctx, state, relay_parent, para_id, relevant_advertiser, tx).await;
 	}
-
-	Ok(())
 }
 
 /// Report a collator for some malicious actions.
+#[tracing::instrument(level = "trace", skip(ctx, state), fields(subsystem = LOG_TARGET))]
 async fn report_collator<Context>(
 	ctx: &mut Context,
 	state: &mut State,
 	id: CollatorId,
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
@@ -251,34 +279,32 @@ where
 	// is a tolerable thing to do.
 	for (k, v) in state.known_collators.iter() {
 		if *v == id {
-			modify_reputation(ctx, k.clone(), COST_REPORT_BAD).await?;
+			modify_reputation(ctx, k.clone(), COST_REPORT_BAD).await;
 		}
 	}
-
-	Ok(())
 }
 
 /// Some other subsystem has reported a collator as a good one, bump reputation.
+#[tracing::instrument(level = "trace", skip(ctx, state), fields(subsystem = LOG_TARGET))]
 async fn note_good_collation<Context>(
 	ctx: &mut Context,
 	state: &mut State,
 	id: CollatorId,
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
 	for (peer_id, collator_id) in state.known_collators.iter() {
 		if id == *collator_id {
-			modify_reputation(ctx, peer_id.clone(), BENEFIT_NOTIFY_GOOD).await?;
+			modify_reputation(ctx, peer_id.clone(), BENEFIT_NOTIFY_GOOD).await;
 		}
 	}
-
-	Ok(())
 }
 
 /// A peer's view has changed. A number of things should be done:
 ///  - Ongoing collation requests have to be cancelled.
 ///  - Advertisements by this peer that are no longer relevant have to be removed.
+#[tracing::instrument(level = "trace", skip(state), fields(subsystem = LOG_TARGET))]
 async fn handle_peer_view_change(
 	state: &mut State,
 	peer_id: PeerId,
@@ -320,14 +346,15 @@ async fn handle_peer_view_change(
 ///  - Cancel all ongoing requests
 ///  - Reply to interested parties if any
 ///  - Store collation.
+#[tracing::instrument(level = "trace", skip(ctx, state, pov), fields(subsystem = LOG_TARGET))]
 async fn received_collation<Context>(
 	ctx: &mut Context,
 	state: &mut State,
 	origin: PeerId,
 	request_id: RequestId,
 	receipt: CandidateReceipt,
-	pov: PoV,
-) -> Result<()>
+	pov: protocol_v1::CompressedPoV,
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
@@ -341,6 +368,27 @@ where
 			if let Some(per_request) = state.requests_info.remove(&id) {
 				let _ = per_request.received.send(());
 				if let Some(collator_id) = state.known_collators.get(&origin) {
+					let pov = match pov.decompress() {
+						Ok(pov) => pov,
+						Err(error) => {
+							tracing::debug!(
+								target: LOG_TARGET,
+								%request_id,
+								?error,
+								"Failed to extract PoV",
+							);
+							return;
+						}
+					};
+
+					let _span = jaeger::pov_span(&pov, "received-collation");
+
+					tracing::debug!(
+						target: LOG_TARGET,
+						%request_id,
+						"Received collation",
+					);
+
 					let _ = per_request.result.send((receipt.clone(), pov.clone()));
 					state.metrics.on_request(Ok(()));
 
@@ -355,11 +403,9 @@ where
 		// If this collation is not just a delayed one that we were expecting,
 		// but our view has moved on, in that case modify peer's reputation.
 		if !state.recently_removed_heads.contains(&relay_parent) {
-			modify_reputation(ctx, origin, COST_UNEXPECTED_MESSAGE).await?;
+			modify_reputation(ctx, origin, COST_UNEXPECTED_MESSAGE).await;
 		}
 	}
-
-	Ok(())
 }
 
 /// Request a collation from the network.
@@ -368,6 +414,7 @@ where
 ///  - Check if the requested collation is in our view.
 ///  - Update PerRequest records with the `result` field if necessary.
 /// And as such invocations of this function may rely on that.
+#[tracing::instrument(level = "trace", skip(ctx, state, result), fields(subsystem = LOG_TARGET))]
 async fn request_collation<Context>(
 	ctx: &mut Context,
 	state: &mut State,
@@ -375,26 +422,30 @@ async fn request_collation<Context>(
 	para_id: ParaId,
 	peer_id: PeerId,
 	result: oneshot::Sender<(CandidateReceipt, PoV)>,
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
 	if !state.view.contains(&relay_parent) {
-		trace!(
-			target: TARGET,
-			"Collation by {} on {} on relay parent {} is no longer in view",
-			peer_id, para_id, relay_parent,
+		tracing::trace!(
+			target: LOG_TARGET,
+			peer_id = %peer_id,
+			para_id = %para_id,
+			relay_parent = %relay_parent,
+			"collation is no longer in view",
 		);
-		return Ok(());
+		return;
 	}
 
 	if state.requested_collations.contains_key(&(relay_parent, para_id.clone(), peer_id.clone())) {
-		trace!(
-			target: TARGET,
-			"Collation by {} on {} on relay parent {} has already been requested",
-			peer_id, para_id, relay_parent,
+		tracing::trace!(
+			target: LOG_TARGET,
+			peer_id = %peer_id,
+			%para_id,
+			?relay_parent,
+			"collation has already been requested",
 		);
-		return Ok(());
+		return;
 	}
 
 	let request_id = state.next_request_id;
@@ -417,9 +468,16 @@ where
 
 	state.requests_info.insert(request_id, per_request);
 
-	state.requests_in_progress.push(Box::pin(async move {
-		request.wait().await
-	}));
+	state.requests_in_progress.push(request.wait().boxed());
+
+	tracing::debug!(
+		target: LOG_TARGET,
+		peer_id = %peer_id,
+		%para_id,
+		%request_id,
+		?relay_parent,
+		"Requesting collation",
+	);
 
 	let wire_message = protocol_v1::CollatorProtocolMessage::RequestCollation(
 		request_id,
@@ -432,18 +490,17 @@ where
 			vec![peer_id],
 			protocol_v1::CollationProtocol::CollatorProtocol(wire_message),
 		)
-	)).await?;
-
-	Ok(())
+	)).await;
 }
 
 /// Notify `CandidateSelectionSubsystem` that a collation has been advertised.
+#[tracing::instrument(level = "trace", skip(ctx), fields(subsystem = LOG_TARGET))]
 async fn notify_candidate_selection<Context>(
 	ctx: &mut Context,
 	collator: CollatorId,
 	relay_parent: Hash,
 	para_id: ParaId,
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
@@ -453,18 +510,17 @@ where
 			para_id,
 			collator,
 		)
-	)).await?;
-
-	Ok(())
+	)).await;
 }
 
 /// Networking message has been received.
+#[tracing::instrument(level = "trace", skip(ctx, state), fields(subsystem = LOG_TARGET))]
 async fn process_incoming_peer_message<Context>(
 	ctx: &mut Context,
 	state: &mut State,
 	origin: PeerId,
 	msg: protocol_v1::CollatorProtocolMessage,
-)-> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
@@ -476,27 +532,29 @@ where
 			state.peer_views.entry(origin).or_default();
 		}
 		AdvertiseCollation(relay_parent, para_id) => {
+			let _span = state.span_per_relay_parent.get(&relay_parent).map(|s| s.child("advertise-collation"));
 			state.advertisements.entry(origin.clone()).or_default().insert((para_id, relay_parent));
 
 			if let Some(collator) = state.known_collators.get(&origin) {
-				notify_candidate_selection(ctx, collator.clone(), relay_parent, para_id).await?;
+				notify_candidate_selection(ctx, collator.clone(), relay_parent, para_id).await;
 			}
 		}
 		RequestCollation(_, _, _) => {
 			// This is a validator side of the protocol, collation requests are not expected here.
-			return modify_reputation(ctx, origin, COST_UNEXPECTED_MESSAGE).await;
+			modify_reputation(ctx, origin, COST_UNEXPECTED_MESSAGE).await;
 		}
 		Collation(request_id, receipt, pov) => {
-			received_collation(ctx, state, origin, request_id, receipt, pov).await?;
+			let _span = state.span_per_relay_parent.get(&receipt.descriptor.relay_parent)
+				.map(|s| s.child("received-collation"));
+			received_collation(ctx, state, origin, request_id, receipt, pov).await;
 		}
 	}
-
-	Ok(())
 }
 
 /// A leaf has become inactive so we want to
 ///   - Cancel all ongoing collation requests that are on top of that leaf.
 ///   - Remove all stored collations relevant to that leaf.
+#[tracing::instrument(level = "trace", skip(state), fields(subsystem = LOG_TARGET))]
 async fn remove_relay_parent(
 	state: &mut State,
 	relay_parent: Hash,
@@ -522,11 +580,22 @@ async fn remove_relay_parent(
 }
 
 /// Our view has changed.
+#[tracing::instrument(level = "trace", skip(state), fields(subsystem = LOG_TARGET))]
 async fn handle_our_view_change(
 	state: &mut State,
-	view: View,
+	view: OurView,
 ) -> Result<()> {
-	let old_view = std::mem::replace(&mut (state.view), view);
+	let old_view = std::mem::replace(&mut state.view, view);
+
+	let added: HashMap<Hash, Arc<JaegerSpan>> = state.view
+		.span_per_head()
+		.iter()
+		.filter(|v| !old_view.contains(&v.0))
+		.map(|v| (v.0.clone(), v.1.clone()))
+		.collect();
+	added.into_iter().for_each(|(h, s)| {
+		state.span_per_relay_parent.insert(h, PerLeafSpan::new(s, "validator-side"));
+	});
 
 	let removed = old_view
 		.difference(&state.view)
@@ -539,17 +608,19 @@ async fn handle_our_view_change(
 	for removed in removed.into_iter() {
 		state.recently_removed_heads.insert(removed.clone());
 		remove_relay_parent(state, removed).await?;
+		state.span_per_relay_parent.remove(&removed);
 	}
 
 	Ok(())
 }
 
 /// A request has timed out.
+#[tracing::instrument(level = "trace", skip(ctx, state), fields(subsystem = LOG_TARGET))]
 async fn request_timed_out<Context>(
 	ctx: &mut Context,
 	state: &mut State,
 	id: RequestId,
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
@@ -561,15 +632,14 @@ where
 			if let Some(_) = state.requests_info.remove(&id) {
 				let peer_id = key.2;
 
-				modify_reputation(ctx, peer_id, COST_REQUEST_TIMED_OUT).await?;
+				modify_reputation(ctx, peer_id, COST_REQUEST_TIMED_OUT).await;
 			}
 		}
 	}
-
-	Ok(())
 }
 
 /// Bridge event switch.
+#[tracing::instrument(level = "trace", skip(ctx, state), fields(subsystem = LOG_TARGET))]
 async fn handle_network_msg<Context>(
 	ctx: &mut Context,
 	state: &mut State,
@@ -595,7 +665,7 @@ where
 			handle_our_view_change(state, view).await?;
 		},
 		PeerMessage(remote, msg) => {
-			process_incoming_peer_message(ctx, state, remote, msg).await?;
+			process_incoming_peer_message(ctx, state, remote, msg).await;
 		}
 	}
 
@@ -603,37 +673,42 @@ where
 }
 
 /// The main message receiver switch.
+#[tracing::instrument(level = "trace", skip(ctx, state), fields(subsystem = LOG_TARGET))]
 async fn process_msg<Context>(
 	ctx: &mut Context,
 	msg: CollatorProtocolMessage,
 	state: &mut State,
-) -> Result<()>
+)
 where
 	Context: SubsystemContext<Message = CollatorProtocolMessage>
 {
 	use CollatorProtocolMessage::*;
 
+	let _timer = state.metrics.time_process_msg();
+
 	match msg {
 		CollateOn(id) => {
-			warn!(
-				target: TARGET,
-				"CollateOn({}) message is not expected on the validator side of the protocol", id,
+			tracing::warn!(
+				target: LOG_TARGET,
+				para_id = %id,
+				"CollateOn message is not expected on the validator side of the protocol",
 			);
 		}
 		DistributeCollation(_, _) => {
-			warn!(
-				target: TARGET,
+			tracing::warn!(
+				target: LOG_TARGET,
 				"DistributeCollation message is not expected on the validator side of the protocol",
 			);
 		}
 		FetchCollation(relay_parent, collator_id, para_id, tx) => {
-			fetch_collation(ctx, state, relay_parent, collator_id, para_id, tx).await?;
+			let _span = state.span_per_relay_parent.get(&relay_parent).map(|s| s.child("fetch-collation"));
+			fetch_collation(ctx, state, relay_parent, collator_id, para_id, tx).await;
 		}
 		ReportCollator(id) => {
-			report_collator(ctx, state, id).await?;
+			report_collator(ctx, state, id).await;
 		}
 		NoteGoodCollation(id) => {
-			note_good_collation(ctx, state, id).await?;
+			note_good_collation(ctx, state, id).await;
 		}
 		NetworkBridgeUpdateV1(event) => {
 			if let Err(e) = handle_network_msg(
@@ -641,18 +716,18 @@ where
 				state,
 				event,
 			).await {
-				warn!(
-					target: TARGET,
-					"Failed to handle incoming network message: {:?}", e,
+				tracing::warn!(
+					target: LOG_TARGET,
+					err = ?e,
+					"Failed to handle incoming network message",
 				);
 			}
 		}
 	}
-
-	Ok(())
 }
 
 /// The main run loop.
+#[tracing::instrument(skip(ctx, metrics), fields(subsystem = LOG_TARGET))]
 pub(crate) async fn run<Context>(
 	mut ctx: Context,
 	request_timeout: Duration,
@@ -673,11 +748,11 @@ where
 	loop {
 		if let Poll::Ready(msg) = futures::poll!(ctx.recv()) {
 			let msg = msg?;
-			trace!(target: TARGET, "Received a message {:?}", msg);
+			tracing::trace!(target: LOG_TARGET, msg = ?msg, "received a message");
 
 			match msg {
-				Communication { msg } => process_msg(&mut ctx, msg, &mut state).await?,
-				Signal(BlockFinalized(_)) => {}
+				Communication { msg } => process_msg(&mut ctx, msg, &mut state).await,
+				Signal(BlockFinalized(..)) => {}
 				Signal(ActiveLeaves(_)) => {}
 				Signal(Conclude) => { break }
 			}
@@ -685,12 +760,14 @@ where
 		}
 
 		while let Poll::Ready(Some(request)) = futures::poll!(state.requests_in_progress.next()) {
+			let _timer = state.metrics.time_handle_collation_request_result();
+
 			// Request has timed out, we need to penalize the collator and re-send the request
 			// if the chain has not moved on yet.
 			match request {
 				CollationRequestResult::Timeout(id) => {
-					trace!(target: TARGET, "Request timed out {}", id);
-					request_timed_out(&mut ctx, &mut state, id).await?;
+					tracing::debug!(target: LOG_TARGET, request_id=%id, "Collation timed out");
+					request_timed_out(&mut ctx, &mut state, id).await;
 				}
 				CollationRequestResult::Received(id) => {
 					state.requests_info.remove(&id);
@@ -721,6 +798,7 @@ mod tests {
 
 	use polkadot_primitives::v1::{BlockData, CollatorPair};
 	use polkadot_subsystem_testhelpers as test_helpers;
+	use polkadot_node_network_protocol::our_view;
 
 	#[derive(Clone)]
 	struct TestState {
@@ -761,7 +839,7 @@ mod tests {
 				log::LevelFilter::Trace,
 			)
 			.filter(
-				Some(TARGET),
+				Some(LOG_TARGET),
 				log::LevelFilter::Trace,
 			)
 			.try_init();
@@ -786,7 +864,7 @@ mod tests {
 		overseer: &mut test_helpers::TestSubsystemContextHandle<CollatorProtocolMessage>,
 		msg: CollatorProtocolMessage,
 	) {
-		log::trace!("Sending message:\n{:?}", &msg);
+		tracing::trace!("Sending message:\n{:?}", &msg);
 		overseer
 			.send(FromOverseer::Communication { msg })
 			.timeout(TIMEOUT)
@@ -801,7 +879,7 @@ mod tests {
 			.await
 			.expect(&format!("{:?} is enough to receive messages.", TIMEOUT));
 
-		log::trace!("Received message:\n{:?}", &msg);
+		tracing::trace!("Received message:\n{:?}", &msg);
 
 		msg
 	}
@@ -810,7 +888,7 @@ mod tests {
 		overseer: &mut test_helpers::TestSubsystemContextHandle<CollatorProtocolMessage>,
 		timeout: Duration,
 	) -> Option<AllMessages> {
-		log::trace!("Waiting for message...");
+		tracing::trace!("Waiting for message...");
 		overseer
 			.recv()
 			.timeout(timeout)
@@ -828,12 +906,12 @@ mod tests {
 			} = test_harness;
 
 			let pair = CollatorPair::generate().0;
-			log::trace!("activating");
+			tracing::trace!("activating");
 
 			overseer_send(
 				&mut virtual_overseer,
 				CollatorProtocolMessage::NetworkBridgeUpdateV1(
-					NetworkBridgeEvent::OurViewChange(View(vec![test_state.relay_parent]))
+					NetworkBridgeEvent::OurViewChange(our_view![test_state.relay_parent])
 				)
 			).await;
 
@@ -891,7 +969,7 @@ mod tests {
 			overseer_send(
 				&mut virtual_overseer,
 				CollatorProtocolMessage::NetworkBridgeUpdateV1(
-					NetworkBridgeEvent::OurViewChange(View(vec![test_state.relay_parent]))
+					NetworkBridgeEvent::OurViewChange(our_view![test_state.relay_parent])
 				)
 			).await;
 
@@ -982,7 +1060,7 @@ mod tests {
 			overseer_send(
 				&mut virtual_overseer,
 				CollatorProtocolMessage::NetworkBridgeUpdateV1(
-					NetworkBridgeEvent::OurViewChange(View(vec![Hash::repeat_byte(0x42)]))
+					NetworkBridgeEvent::OurViewChange(our_view![Hash::repeat_byte(0x42)])
 				)
 			).await;
 
@@ -1010,7 +1088,7 @@ mod tests {
 			overseer_send(
 				&mut virtual_overseer,
 				CollatorProtocolMessage::NetworkBridgeUpdateV1(
-					NetworkBridgeEvent::OurViewChange(View(vec![test_state.relay_parent]))
+					NetworkBridgeEvent::OurViewChange(our_view![test_state.relay_parent])
 				)
 			).await;
 
@@ -1094,8 +1172,8 @@ mod tests {
 			overseer_send(
 				&mut virtual_overseer,
 				CollatorProtocolMessage::NetworkBridgeUpdateV1(
-					NetworkBridgeEvent::OurViewChange(View(vec![test_state.relay_parent]))
-				)
+					NetworkBridgeEvent::OurViewChange(our_view![test_state.relay_parent])
+				),
 			).await;
 
 			let peer_b = PeerId::random();
@@ -1231,9 +1309,9 @@ mod tests {
 						protocol_v1::CollatorProtocolMessage::Collation(
 							request_id,
 							candidate_a.clone(),
-							PoV {
+							protocol_v1::CompressedPoV::compress(&PoV {
 								block_data: BlockData(vec![]),
-							},
+							}).unwrap(),
 						)
 					)
 				)
@@ -1269,9 +1347,9 @@ mod tests {
 						protocol_v1::CollatorProtocolMessage::Collation(
 							request_id,
 							candidate_b.clone(),
-							PoV {
+							protocol_v1::CompressedPoV::compress(&PoV {
 								block_data: BlockData(vec![1, 2, 3]),
-							},
+							}).unwrap(),
 						)
 					)
 				)

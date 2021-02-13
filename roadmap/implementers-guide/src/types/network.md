@@ -8,22 +8,56 @@ These types are those that are actually sent over the network to subsystems.
 type RequestId = u64;
 type ProtocolVersion = u32;
 struct PeerId(...); // opaque, unique identifier of a peer.
-struct View(Vec<Hash>); // Up to `N` (5?) chain heads.
+struct View {
+	// Up to `N` (5?) chain heads.
+	heads: Vec<Hash>,
+	// The number of the finalized block.
+	finalized_number: BlockNumber,
+}
 
 enum ObservedRole {
 	Full,
 	Light,
 }
+
+/// SCALE and zstd encoded `PoV`.
+struct CompressedPoV(Vec<u8>);
 ```
 
 ## V1 Network Subsystem Message Types
+
+### Approval Distribution V1
+
+```rust
+enum ApprovalDistributionV1Message {
+	/// Assignments for candidates in recent, unfinalized blocks.
+	///
+	/// The u32 is the claimed index of the candidate this assignment corresponds to. Actually checking the assignment
+	/// may yield a different result.
+	Assignments(Vec<(IndirectAssignmentCert, u32)>),
+	/// Approvals for candidates in some recent, unfinalized block.
+	Approvals(Vec<IndirectSignedApprovalVote>),
+}
+```
 
 ### Availability Distribution V1
 
 ```rust
 enum AvailabilityDistributionV1Message {
 	/// An erasure chunk for a given candidate hash.
-	Chunk(Hash, ErasureChunk),
+	Chunk(CandidateHash, ErasureChunk),
+}
+```
+
+### Availability Recovery V1
+
+```rust
+enum AvailabilityRecoveryV1Message {
+	/// Request a chunk for a given candidate hash and validator index.
+	RequestChunk(RequestId, CandidateHash, ValidatorIndex),
+	/// Respond with chunk for a given candidate hash and validator index.
+	/// The response may be `None` if the requestee does not have the chunk.
+	Chunk(RequestId, Option<ErasureChunk>),
 }
 ```
 
@@ -44,8 +78,8 @@ enum PoVDistributionV1Message {
 	/// specific relay-parent hash.
 	Awaiting(Hash, Vec<Hash>),
 	/// Notification of an awaited PoV, in a given relay-parent context.
-	/// (relay_parent, pov_hash, pov)
-	SendPoV(Hash, Hash, PoV),
+	/// (relay_parent, pov_hash, compressed_pov)
+	SendPoV(Hash, Hash, CompressedPoV),
 }
 ```
 
@@ -70,7 +104,7 @@ enum CollatorProtocolV1Message {
 	/// Request the advertised collation at that relay-parent.
 	RequestCollation(RequestId, Hash, ParaId),
 	/// A requested collation.
-	Collation(RequestId, CandidateReceipt, PoV),
+	Collation(RequestId, CandidateReceipt, CompressedPoV),
 }
 ```
 
@@ -82,7 +116,9 @@ These are the messages for the protocol on the validation peer-set.
 
 ```rust
 enum ValidationProtocolV1 {
+	ApprovalDistribution(ApprovalDistributionV1Message),
 	AvailabilityDistribution(AvailabilityDistributionV1Message),
+	AvailabilityRecovery(AvailabilityRecoveryV1Message),
 	BitfieldDistribution(BitfieldDistributionV1Message),
 	PoVDistribution(PoVDistributionV1Message),
 	StatementDistribution(StatementDistributionV1Message),

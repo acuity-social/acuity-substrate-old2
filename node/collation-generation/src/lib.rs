@@ -32,7 +32,7 @@ use polkadot_node_subsystem::{
 	FromOverseer, SpawnedSubsystem, Subsystem, SubsystemContext, SubsystemResult,
 };
 use polkadot_node_subsystem_util::{
-	request_availability_cores_ctx, request_full_validation_data_ctx,
+	request_availability_cores_ctx, request_persisted_validation_data_ctx,
 	request_validators_ctx,
 	metrics::{self, prometheus},
 };
@@ -74,6 +74,7 @@ impl CollationGenerationSubsystem {
 	///
 	/// If `err_tx` is not `None`, errors are forwarded onto that channel as they occur.
 	/// Otherwise, most are logged and then discarded.
+	#[tracing::instrument(skip(self, ctx), fields(subsystem = LOG_TARGET))]
 	async fn run<Context>(mut self, mut ctx: Context)
 	where
 		Context: SubsystemContext<Message = CollationGenerationMessage>,
@@ -83,8 +84,9 @@ impl CollationGenerationSubsystem {
 		// at any point waiting for them all, so instead, we create a channel on which they can
 		// send those messages. We can then just monitor the channel and forward messages on it
 		// to the overseer here, via the context.
-		let (sender, mut receiver) = mpsc::channel(0);
+		let (sender, receiver) = mpsc::channel(0);
 
+		let mut receiver = receiver.fuse();
 		loop {
 			select! {
 				incoming = ctx.recv().fuse() => {
@@ -92,12 +94,9 @@ impl CollationGenerationSubsystem {
 						break;
 					}
 				},
-				msg = receiver.next().fuse() => {
+				msg = receiver.next() => {
 					if let Some(msg) = msg {
-						if let Err(err) = ctx.send_message(msg).await {
-							log::warn!(target: LOG_TARGET, "failed to forward message to overseer: {:?}", err);
-							break;
-						}
+						ctx.send_message(msg).await;
 					}
 				},
 			}
@@ -108,6 +107,7 @@ impl CollationGenerationSubsystem {
 	// note: this doesn't strictly need to be a separate function; it's more an administrative function
 	// so that we don't clutter the run loop. It could in principle be inlined directly into there.
 	// it should hopefully therefore be ok that it's an async function mutably borrowing self.
+	#[tracing::instrument(level = "trace", skip(self, ctx, sender), fields(subsystem = LOG_TARGET))]
 	async fn handle_incoming<Context>(
 		&mut self,
 		incoming: SubsystemResult<FromOverseer<Context::Message>>,
@@ -126,13 +126,17 @@ impl CollationGenerationSubsystem {
 				// follow the procedure from the guide
 				if let Some(config) = &self.config {
 					let metrics = self.metrics.clone();
-					if let Err(err) =
-						handle_new_activations(config.clone(), &activated, ctx, metrics, sender).await
-					{
-						log::warn!(target: LOG_TARGET, "failed to handle new activations: {:?}", err);
-						return true;
-					};
+					if let Err(err) = handle_new_activations(
+						config.clone(),
+						activated.into_iter().map(|v| v.0),
+						ctx,
+						metrics,
+						sender,
+					).await {
+						tracing::warn!(target: LOG_TARGET, err = ?err, "failed to handle new activations");
+					}
 				}
+
 				false
 			}
 			Ok(Signal(Conclude)) => true,
@@ -140,17 +144,17 @@ impl CollationGenerationSubsystem {
 				msg: CollationGenerationMessage::Initialize(config),
 			}) => {
 				if self.config.is_some() {
-					log::warn!(target: LOG_TARGET, "double initialization");
-					true
+					tracing::error!(target: LOG_TARGET, "double initialization");
 				} else {
 					self.config = Some(Arc::new(config));
-					false
 				}
+				false
 			}
-			Ok(Signal(BlockFinalized(_))) => false,
+			Ok(Signal(BlockFinalized(..))) => false,
 			Err(err) => {
-				log::error!(
+				tracing::error!(
 					target: LOG_TARGET,
+					err = ?err,
 					"error receiving message from subsystem context: {:?}",
 					err
 				);
@@ -165,7 +169,10 @@ where
 	Context: SubsystemContext<Message = CollationGenerationMessage>,
 {
 	fn start(self, ctx: Context) -> SpawnedSubsystem {
-		let future = Box::pin(self.run(ctx));
+		let future = async move {
+			self.run(ctx).await;
+			Ok(())
+		}.boxed();
 
 		SpawnedSubsystem {
 			name: "collation-generation-subsystem",
@@ -174,9 +181,10 @@ where
 	}
 }
 
+#[tracing::instrument(level = "trace", skip(ctx, metrics, sender, activated), fields(subsystem = LOG_TARGET))]
 async fn handle_new_activations<Context: SubsystemContext>(
 	config: Arc<CollationGenerationConfig>,
-	activated: &[Hash],
+	activated: impl IntoIterator<Item = Hash>,
 	ctx: &mut Context,
 	metrics: Metrics,
 	sender: &mpsc::Sender<AllMessages>,
@@ -184,9 +192,11 @@ async fn handle_new_activations<Context: SubsystemContext>(
 	// follow the procedure from the guide:
 	// https://w3f.github.io/parachain-implementers-guide/node/collators/collation-generation.html
 
-	for relay_parent in activated.iter().copied() {
-		// double-future magic happens here: the first layer of requests takes a mutable borrow of the context, and
-		// returns a receiver. The second layer of requests actually polls those receivers to completion.
+	let _overall_timer = metrics.time_new_activations();
+
+	for relay_parent in activated {
+		let _relay_parent_timer = metrics.time_new_activations_relay_parent();
+
 		let (availability_cores, validators) = join!(
 			request_availability_cores_ctx(relay_parent, ctx).await?,
 			request_validators_ctx(relay_parent, ctx).await?,
@@ -195,26 +205,49 @@ async fn handle_new_activations<Context: SubsystemContext>(
 		let availability_cores = availability_cores??;
 		let n_validators = validators??.len();
 
-		for core in availability_cores {
+		for (core_idx, core) in availability_cores.into_iter().enumerate() {
+			let _availability_core_timer = metrics.time_new_activations_availability_core();
+
 			let (scheduled_core, assumption) = match core {
 				CoreState::Scheduled(scheduled_core) => {
 					(scheduled_core, OccupiedCoreAssumption::Free)
 				}
 				CoreState::Occupied(_occupied_core) => {
 					// TODO: https://github.com/paritytech/polkadot/issues/1573
+					tracing::trace!(
+						target: LOG_TARGET,
+						core_idx = %core_idx,
+						relay_parent = ?relay_parent,
+						"core is occupied. Keep going.",
+					);
 					continue;
 				}
-				_ => continue,
+				CoreState::Free => {
+					tracing::trace!(
+						target: LOG_TARGET,
+						core_idx = %core_idx,
+						"core is free. Keep going.",
+					);
+					continue
+				}
 			};
 
 			if scheduled_core.para_id != config.para_id {
+				tracing::trace!(
+					target: LOG_TARGET,
+					core_idx = %core_idx,
+					relay_parent = ?relay_parent,
+					our_para = %config.para_id,
+					their_para = %scheduled_core.para_id,
+					"core is not assigned to our para. Keep going.",
+				);
 				continue;
 			}
 
 			// we get validation data synchronously for each core instead of
 			// within the subtask loop, because we have only a single mutable handle to the
 			// context, so the work can't really be distributed
-			let validation_data = match request_full_validation_data_ctx(
+			let validation_data = match request_persisted_validation_data_ctx(
 				relay_parent,
 				scheduled_core.para_id,
 				assumption,
@@ -224,22 +257,32 @@ async fn handle_new_activations<Context: SubsystemContext>(
 			.await??
 			{
 				Some(v) => v,
-				None => continue,
+				None => {
+					tracing::trace!(
+						target: LOG_TARGET,
+						core_idx = %core_idx,
+						relay_parent = ?relay_parent,
+						our_para = %config.para_id,
+						their_para = %scheduled_core.para_id,
+						"validation data is not available",
+					);
+					continue
+				}
 			};
 
 			let task_config = config.clone();
 			let mut task_sender = sender.clone();
 			let metrics = metrics.clone();
 			ctx.spawn("collation generation collation builder", Box::pin(async move {
-				let persisted_validation_data_hash = validation_data.persisted.hash();
+				let persisted_validation_data_hash = validation_data.hash();
 
 				let collation = match (task_config.collator)(relay_parent, &validation_data).await {
 					Some(collation) => collation,
 					None => {
-						log::debug!(
+						tracing::debug!(
 							target: LOG_TARGET,
-							"collator returned no collation on collate for para_id {}.",
-							scheduled_core.para_id,
+							para_id = %scheduled_core.para_id,
+							"collator returned no collation on collate",
 						);
 						return
 					}
@@ -256,16 +299,16 @@ async fn handle_new_activations<Context: SubsystemContext>(
 
 				let erasure_root = match erasure_root(
 					n_validators,
-					validation_data.persisted,
+					validation_data,
 					collation.proof_of_validity.clone(),
 				) {
 					Ok(erasure_root) => erasure_root,
 					Err(err) => {
-						log::error!(
+						tracing::error!(
 							target: LOG_TARGET,
-							"failed to calculate erasure root for para_id {}: {:?}",
-							scheduled_core.para_id,
-							err
+							para_id = %scheduled_core.para_id,
+							err = ?err,
+							"failed to calculate erasure root",
 						);
 						return
 					}
@@ -273,10 +316,11 @@ async fn handle_new_activations<Context: SubsystemContext>(
 
 				let commitments = CandidateCommitments {
 					upward_messages: collation.upward_messages,
+					horizontal_messages: collation.horizontal_messages,
 					new_validation_code: collation.new_validation_code,
 					head_data: collation.head_data,
-					erasure_root,
 					processed_downward_messages: collation.processed_downward_messages,
+					hrmp_watermark: collation.hrmp_watermark,
 				};
 
 				let ccr = CandidateReceipt {
@@ -288,6 +332,8 @@ async fn handle_new_activations<Context: SubsystemContext>(
 						collator: task_config.key.public(),
 						persisted_validation_data_hash,
 						pov_hash,
+						erasure_root,
+						para_head: commitments.head_data.hash(),
 					},
 				};
 
@@ -296,11 +342,11 @@ async fn handle_new_activations<Context: SubsystemContext>(
 				if let Err(err) = task_sender.send(AllMessages::CollatorProtocol(
 					CollatorProtocolMessage::DistributeCollation(ccr, collation.proof_of_validity)
 				)).await {
-					log::warn!(
+					tracing::warn!(
 						target: LOG_TARGET,
-						"failed to send collation result for para_id {}: {:?}",
-						scheduled_core.para_id,
-						err
+						para_id = %scheduled_core.para_id,
+						err = ?err,
+						"failed to send collation result",
 					);
 				}
 			})).await?;
@@ -310,6 +356,7 @@ async fn handle_new_activations<Context: SubsystemContext>(
 	Ok(())
 }
 
+#[tracing::instrument(level = "trace", fields(subsystem = LOG_TARGET))]
 fn erasure_root(
 	n_validators: usize,
 	persisted_validation: PersistedValidationData,
@@ -317,7 +364,7 @@ fn erasure_root(
 ) -> crate::error::Result<Hash> {
 	let available_data = AvailableData {
 		validation_data: persisted_validation,
-		pov,
+		pov: Arc::new(pov),
 	};
 
 	let chunks = polkadot_erasure_coding::obtain_chunks_v1(n_validators, &available_data)?;
@@ -327,6 +374,9 @@ fn erasure_root(
 #[derive(Clone)]
 struct MetricsInner {
 	collations_generated_total: prometheus::Counter<prometheus::U64>,
+	new_activations_overall: prometheus::Histogram,
+	new_activations_per_relay_parent: prometheus::Histogram,
+	new_activations_per_availability_core: prometheus::Histogram,
 }
 
 /// CollationGenerationSubsystem metrics.
@@ -339,6 +389,21 @@ impl Metrics {
 			metrics.collations_generated_total.inc();
 		}
 	}
+
+	/// Provide a timer for new activations which updates on drop.
+	fn time_new_activations(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
+		self.0.as_ref().map(|metrics| metrics.new_activations_overall.start_timer())
+	}
+
+	/// Provide a timer per relay parents which updates on drop.
+	fn time_new_activations_relay_parent(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
+		self.0.as_ref().map(|metrics| metrics.new_activations_per_relay_parent.start_timer())
+	}
+
+	/// Provide a timer per availability core which updates on drop.
+	fn time_new_activations_availability_core(&self) -> Option<metrics::prometheus::prometheus::HistogramTimer> {
+		self.0.as_ref().map(|metrics| metrics.new_activations_per_availability_core.start_timer())
+	}
 }
 
 impl metrics::Metrics for Metrics {
@@ -348,6 +413,33 @@ impl metrics::Metrics for Metrics {
 				prometheus::Counter::new(
 					"parachain_collations_generated_total",
 					"Number of collations generated."
+				)?,
+				registry,
+			)?,
+			new_activations_overall: prometheus::register(
+				prometheus::Histogram::with_opts(
+					prometheus::HistogramOpts::new(
+						"parachain_collation_generation_new_activations",
+						"Time spent within fn handle_new_activations",
+					)
+				)?,
+				registry,
+			)?,
+			new_activations_per_relay_parent: prometheus::register(
+				prometheus::Histogram::with_opts(
+					prometheus::HistogramOpts::new(
+						"parachain_collation_generation_per_relay_parent",
+						"Time spent handling a particular relay parent within fn handle_new_activations"
+					)
+				)?,
+				registry,
+			)?,
+			new_activations_per_availability_core: prometheus::register(
+				prometheus::Histogram::with_opts(
+					prometheus::HistogramOpts::new(
+						"parachain_collation_generation_per_availability_core",
+						"Time spent handling a particular availability core for a relay parent in fn handle_new_activations",
+					)
 				)?,
 				registry,
 			)?,
@@ -374,19 +466,21 @@ mod tests {
 		};
 		use polkadot_primitives::v1::{
 			BlockData, BlockNumber, CollatorPair, Id as ParaId,
-			PersistedValidationData, PoV, ScheduledCore, ValidationData,
+			PersistedValidationData, PoV, ScheduledCore,
 		};
 		use std::pin::Pin;
 
 		fn test_collation() -> Collation {
 			Collation {
 				upward_messages: Default::default(),
+				horizontal_messages: Default::default(),
 				new_validation_code: Default::default(),
 				head_data: Default::default(),
 				proof_of_validity: PoV {
 					block_data: BlockData(Vec::new()),
 				},
 				processed_downward_messages: Default::default(),
+				hrmp_watermark: Default::default(),
 			}
 		}
 
@@ -406,7 +500,7 @@ mod tests {
 		fn test_config<Id: Into<ParaId>>(para_id: Id) -> Arc<CollationGenerationConfig> {
 			Arc::new(CollationGenerationConfig {
 				key: CollatorPair::generate().0,
-				collator: Box::new(|_: Hash, _vd: &ValidationData| {
+				collator: Box::new(|_: Hash, _vd: &PersistedValidationData| {
 					TestCollator.boxed()
 				}),
 				para_id: para_id.into(),
@@ -454,7 +548,7 @@ mod tests {
 			subsystem_test_harness(overseer, |mut ctx| async move {
 				handle_new_activations(
 					test_config(123u32),
-					&subsystem_activated_hashes,
+					subsystem_activated_hashes,
 					&mut ctx,
 					Metrics(None),
 					&tx,
@@ -480,9 +574,9 @@ mod tests {
 				Hash::repeat_byte(16),
 			];
 
-			let requested_full_validation_data = Arc::new(Mutex::new(Vec::new()));
+			let requested_validation_data = Arc::new(Mutex::new(Vec::new()));
 
-			let overseer_requested_full_validation_data = requested_full_validation_data.clone();
+			let overseer_requested_validation_data = requested_validation_data.clone();
 			let overseer = |mut handle: TestSubsystemContextHandle<CollationGenerationMessage>| async move {
 				loop {
 					match handle.try_recv().await {
@@ -505,13 +599,13 @@ mod tests {
 						}
 						Some(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
 							hash,
-							RuntimeApiRequest::FullValidationData(
+							RuntimeApiRequest::PersistedValidationData(
 								_para_id,
 								_occupied_core_assumption,
 								tx,
 							),
 						))) => {
-							overseer_requested_full_validation_data
+							overseer_requested_validation_data
 								.lock()
 								.await
 								.push(hash);
@@ -533,12 +627,12 @@ mod tests {
 			let (tx, _rx) = mpsc::channel(0);
 
 			subsystem_test_harness(overseer, |mut ctx| async move {
-				handle_new_activations(test_config(16), &activated_hashes, &mut ctx, Metrics(None), &tx)
+				handle_new_activations(test_config(16), activated_hashes, &mut ctx, Metrics(None), &tx)
 					.await
 					.unwrap();
 			});
 
-			let requested_full_validation_data = Arc::try_unwrap(requested_full_validation_data)
+			let requested_validation_data = Arc::try_unwrap(requested_validation_data)
 				.expect("overseer should have shut down by now")
 				.into_inner();
 
@@ -546,7 +640,7 @@ mod tests {
 			// each activated hash generates two scheduled cores: one with its value * 4, one with its value * 5
 			// given that the test configuration has a para_id of 16, there's only one way to get that value: with the 4
 			// hash.
-			assert_eq!(requested_full_validation_data, vec![[4; 32].into()]);
+			assert_eq!(requested_validation_data, vec![[4; 32].into()]);
 		}
 
 		#[test]
@@ -580,7 +674,7 @@ mod tests {
 						}
 						Some(AllMessages::RuntimeApi(RuntimeApiMessage::Request(
 							_hash,
-							RuntimeApiRequest::FullValidationData(
+							RuntimeApiRequest::PersistedValidationData(
 								_para_id,
 								_occupied_core_assumption,
 								tx,
@@ -610,7 +704,7 @@ mod tests {
 			let sent_messages = Arc::new(Mutex::new(Vec::new()));
 			let subsystem_sent_messages = sent_messages.clone();
 			subsystem_test_harness(overseer, |mut ctx| async move {
-				handle_new_activations(subsystem_config, &activated_hashes, &mut ctx, Metrics(None), &tx)
+				handle_new_activations(subsystem_config, activated_hashes, &mut ctx, Metrics(None), &tx)
 					.await
 					.unwrap();
 
@@ -644,6 +738,8 @@ mod tests {
 				collator: config.key.public(),
 				persisted_validation_data_hash: expect_validation_data_hash,
 				pov_hash: expect_pov_hash,
+				erasure_root: Default::default(), // this isn't something we're checking right now
+				para_head: test_collation().head_data.hash(),
 			};
 
 			assert_eq!(sent_messages.len(), 1);
@@ -670,6 +766,7 @@ mod tests {
 					let expect_descriptor = {
 						let mut expect_descriptor = expect_descriptor;
 						expect_descriptor.signature = descriptor.signature.clone();
+						expect_descriptor.erasure_root = descriptor.erasure_root.clone();
 						expect_descriptor
 					};
 					assert_eq!(descriptor, &expect_descriptor);

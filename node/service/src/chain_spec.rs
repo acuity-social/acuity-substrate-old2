@@ -16,7 +16,7 @@
 
 //! Polkadot chain configurations.
 
-use authority_discovery_primitives::AuthorityId as AuthorityDiscoveryId;
+use sp_authority_discovery::AuthorityId as AuthorityDiscoveryId;
 use babe_primitives::AuthorityId as BabeId;
 use grandpa::AuthorityId as GrandpaId;
 use hex_literal::hex;
@@ -24,13 +24,12 @@ use acuity::constants::currency::ACU;
 use acuity_runtime as acuity;
 use pallet_im_online::sr25519::AuthorityId as ImOnlineId;
 use pallet_staking::Forcing;
-use polkadot_primitives::v1::{AccountId, AccountPublic, ValidatorId};
+use polkadot_primitives::v1::{AccountId, AccountPublic, ValidatorId, AssignmentId};
 use sc_chain_spec::{ChainSpecExtension, ChainType};
 use serde::{Deserialize, Serialize};
 use sp_core::{crypto::UncheckedInto, sr25519, Pair, Public};
 use sp_runtime::{traits::IdentifyAccount, Perbill};
 use telemetry::TelemetryEndpoints;
-use std::collections::BTreeMap;
 
 const ACUITY_STAGING_TELEMETRY_URL: &str = "wss://telemetry.polkadot.io/submit/";
 const DEFAULT_PROTOCOL_ID: &str = "acu";
@@ -59,14 +58,16 @@ fn acuity_session_keys(
 	babe: BabeId,
 	grandpa: GrandpaId,
 	im_online: ImOnlineId,
-	parachain_validator: ValidatorId,
+	para_validator: ValidatorId,
+	para_assignment: AssignmentId,
 	authority_discovery: AuthorityDiscoveryId,
 ) -> acuity::SessionKeys {
 	acuity::SessionKeys {
 		babe,
 		grandpa,
 		im_online,
-		parachain_validator,
+		para_validator,
+		para_assignment,
 		authority_discovery,
 	}
 }
@@ -82,7 +83,7 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 	// for i in 1 2 3 4; do for j in babe; do subkey --sr25519 inspect "$SECRET//$i//$j"; done; done
 	// for i in 1 2 3 4; do for j in grandpa; do subkey --ed25519 inspect "$SECRET//$i//$j"; done; done
 	// for i in 1 2 3 4; do for j in im_online; do subkey --sr25519 inspect "$SECRET//$i//$j"; done; done
-	// for i in 1 2 3 4; do for j in parachains; do subkey --sr25519 inspect "$SECRET//$i//$j"; done; done
+	// for i in 1 2 3 4; do for j in para_validator para_assignment; do subkey --sr25519 inspect "$SECRET//$i//$j"; done; done
 	let initial_authorities: Vec<(
 		AccountId,
 		AccountId,
@@ -90,6 +91,7 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 		GrandpaId,
 		ImOnlineId,
 		ValidatorId,
+		AssignmentId,
 		AuthorityDiscoveryId,
 	)> = vec![
 		(
@@ -102,6 +104,9 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 				.unchecked_into(),
 			// 5EjvdwATjyFFikdZibVvx1q5uBHhphS2Mnsq5c7yfaYK25vm
 			hex!["76620f7c98bce8619979c2b58cf2b0aff71824126d2b039358729dad993223db"]
+				.unchecked_into(),
+			// 5FpewyS2VY8Cj3tKgSckq8ECkjd1HKHvBRnWhiHqRQsWfFC1
+			hex!["a639b507ee1585e0b6498ff141d6153960794523226866d1b44eba3f25f36356"]
 				.unchecked_into(),
 			// 5FpewyS2VY8Cj3tKgSckq8ECkjd1HKHvBRnWhiHqRQsWfFC1
 			hex!["a639b507ee1585e0b6498ff141d6153960794523226866d1b44eba3f25f36356"]
@@ -133,6 +138,9 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 			// 5GvuM53k1Z4nAB5zXJFgkRSHv4Bqo4BsvgbQWNWkiWZTMwWY
 			hex!["765e46067adac4d1fe6c783aa2070dfa64a19f84376659e12705d1734b3eae01"]
 				.unchecked_into(),
+			// 5GvuM53k1Z4nAB5zXJFgkRSHv4Bqo4BsvgbQWNWkiWZTMwWY
+			hex!["765e46067adac4d1fe6c783aa2070dfa64a19f84376659e12705d1734b3eae01"]
+				.unchecked_into(),
 		),
 		(
 			// 5FzwpgGvk2kk9agow6KsywLYcPzjYc8suKej2bne5G5b9YU3
@@ -154,6 +162,9 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 			// 5CXNq1mSKJT4Sc2CbyBBdANeSkbUvdWvE4czJjKXfBHi9sX5
 			hex!["664eae1ca4713dd6abf8c15e6c041820cda3c60df97dc476c2cbf7cb82cb2d2e"]
 				.unchecked_into(),
+			// 5CXNq1mSKJT4Sc2CbyBBdANeSkbUvdWvE4czJjKXfBHi9sX5
+			hex!["664eae1ca4713dd6abf8c15e6c041820cda3c60df97dc476c2cbf7cb82cb2d2e"]
+				.unchecked_into(),
 		),
 		(
 			// 5CFj6Kg9rmVn1vrqpyjau2ztyBzKeVdRKwNPiA3tqhB5HPqq
@@ -165,6 +176,9 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 				.unchecked_into(),
 			// 5HGLmrZsiTFTPp3QoS1W8w9NxByt8PVq79reqvdxNcQkByqK
 			hex!["e60d23f49e93c1c1f2d7c115957df5bbd7faf5ebf138d1e9d02e8b39a1f63df0"]
+				.unchecked_into(),
+			// 5FCd9Y7RLNyxz5wnCAErfsLbXGG34L2BaZRHzhiJcMUMd5zd
+			hex!["2adb17a5cafbddc7c3e00ec45b6951a8b12ce2264235b4def342513a767e5d3d"]
 				.unchecked_into(),
 			// 5FCd9Y7RLNyxz5wnCAErfsLbXGG34L2BaZRHzhiJcMUMd5zd
 			hex!["2adb17a5cafbddc7c3e00ec45b6951a8b12ce2264235b4def342513a767e5d3d"]
@@ -207,6 +221,7 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 							x.4.clone(),
 							x.5.clone(),
 							x.6.clone(),
+							x.7.clone(),
 						),
 					)
 				})
@@ -254,9 +269,7 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 		pallet_sudo: Some(acuity::SudoConfig {
 			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
 		}),
-		pallet_evm: Some(acuity::EVMConfig {
-			accounts: BTreeMap::new(),
-		}),
+        pallet_treasury: Some(Default::default()),
 	}
 }
 
@@ -306,6 +319,7 @@ pub fn get_authority_keys_from_seed(
 	GrandpaId,
 	ImOnlineId,
 	ValidatorId,
+	AssignmentId,
 	AuthorityDiscoveryId,
 ) {
 	(
@@ -315,6 +329,7 @@ pub fn get_authority_keys_from_seed(
 		get_from_seed::<GrandpaId>(seed),
 		get_from_seed::<ImOnlineId>(seed),
 		get_from_seed::<ValidatorId>(seed),
+		get_from_seed::<AssignmentId>(seed),
 		get_from_seed::<AuthorityDiscoveryId>(seed),
 	)
 }
@@ -346,6 +361,7 @@ pub fn acuity_testnet_genesis(
 		GrandpaId,
 		ImOnlineId,
 		ValidatorId,
+		AssignmentId,
 		AuthorityDiscoveryId,
 	)>,
 	_root_key: AccountId,
@@ -381,6 +397,7 @@ pub fn acuity_testnet_genesis(
 							x.4.clone(),
 							x.5.clone(),
 							x.6.clone(),
+							x.7.clone(),
 						),
 					)
 				})
@@ -428,9 +445,7 @@ pub fn acuity_testnet_genesis(
 		pallet_sudo: Some(acuity::SudoConfig {
 			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
 		}),
-		pallet_evm: Some(acuity::EVMConfig {
-			accounts: BTreeMap::new(),
-		}),
+        pallet_treasury: Some(Default::default()),
 	}
 }
 

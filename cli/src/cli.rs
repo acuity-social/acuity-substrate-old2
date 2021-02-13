@@ -52,6 +52,9 @@ pub enum Subcommand {
 		about = "Benchmark runtime pallets."
 	)]
 	Benchmark(frame_benchmarking_cli::BenchmarkCmd),
+
+	/// Key management cli utilities
+	Key(sc_cli::KeySubcommand),
 }
 
 #[allow(missing_docs)]
@@ -72,23 +75,6 @@ pub struct RunCmd {
 	#[structopt(long = "force-acuity")]
 	pub force_acuity: bool,
 
-	/// Disable the authority discovery module on validator or sentry nodes.
-	///
-	/// Enabled by default on validator and sentry nodes. Always disabled on non
-	/// validator or sentry nodes.
-	///
-	/// When enabled:
-	///
-	/// (1) As a validator node: Make oneself discoverable by publishing either
-	///     ones own network addresses, or the ones of ones sentry nodes
-	///     (configured via the `sentry-nodes` flag).
-	///
-	/// (2) As a validator or sentry node: Discover addresses of validators or
-	///     addresses of their sentry nodes and maintain a permanent connection
-	///     to a subset.
-	#[structopt(long = "disable-authority-discovery")]
-	pub authority_discovery_disabled: bool,
-
 	/// Setup a GRANDPA scheduled voting pause.
 	///
 	/// This parameter takes two values, namely a block number and a delay (in
@@ -97,6 +83,13 @@ pub struct RunCmd {
 	/// elapsed (i.e. until a block at height `pause_block + delay` is imported).
 	#[structopt(long = "grandpa-pause", number_of_values(2))]
 	pub grandpa_pause: Vec<u32>,
+
+	/// Add the destination address to the jaeger agent.
+	///
+	/// Must be valid socket address, of format `IP:Port`
+	/// commonly `127.0.0.1:6831`.
+	#[structopt(long)]
+	pub jaeger_agent: Option<std::net::SocketAddr>,
 }
 
 #[allow(missing_docs)]
@@ -104,7 +97,6 @@ pub struct RunCmd {
 pub struct Cli {
 	#[structopt(subcommand)]
 	pub subcommand: Option<Subcommand>,
-
 	#[structopt(flatten)]
 	pub run: RunCmd,
 }

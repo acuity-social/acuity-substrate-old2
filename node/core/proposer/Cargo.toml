@@ -5,20 +5,20 @@ authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2018"
 
 [dependencies]
-futures = "0.3.4"
-log = "0.4.8"
+futures = "0.3.12"
+futures-timer = "3.0.2"
+tracing = "0.1.22"
 polkadot-node-subsystem = { path = "../../subsystem" }
 polkadot-overseer = { path = "../../overseer" }
 polkadot-primitives = { path = "../../../primitives" }
-sc-basic-authorship = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sc-block-builder = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sc-client-api = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-api = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-blockchain = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-consensus = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-core = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-inherents = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-runtime = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-sp-transaction-pool = { git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", rev = "668ecade60abe5a644868aefd3d231c9839fe652" }
-wasm-timer = "0.2.4"
+sc-basic-authorship = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sc-block-builder = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sc-client-api = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-api = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-blockchain = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-consensus = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-inherents = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-runtime = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+sp-transaction-pool = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }

@@ -6,22 +6,23 @@ path = "src/main.rs"
 name = "acuity"
 description = "Implementation of a https://acuity.social node in Rust based on the Substrate framework."
 license = "GPL-3.0-only"
-version = "0.8.26-2"
+version = "0.8.28-1"
 authors = ["Parity Technologies <admin@parity.io>"]
 edition = "2018"
 readme = "README.md"
 
 [dependencies]
 cli = { package = "polkadot-cli", path = "cli" }
-color-eyre = "0.5.6"
-futures = "0.3.4"
+color-eyre = "0.5.10"
+thiserror = "1.0.23"
+futures = "0.3.12"
 service = { package = "polkadot-service", path = "node/service" }
 parity-util-mem = { version = "*", default-features = false, features = ["jemalloc-global"] }
 
 [dev-dependencies]
-assert_cmd = "0.12"
-nix = "0.17"
-tempfile = "3.1.0"
+assert_cmd = "1.0.2"
+nix = "0.19.1"
+tempfile = "3.2.0"
 
 [workspace]
 members = [
@@ -34,11 +35,11 @@ members = [
 	"runtime/acuity",
 	"runtime/test-runtime",
 	"statement-table",
-	"validation",
 	"xcm",
 	"xcm/xcm-builder",
 	"xcm/xcm-executor",
 	"node/collation-generation",
+	"node/core/approval-voting",
 	"node/core/av-store",
 	"node/core/backing",
 	"node/core/bitfield-signing",
@@ -48,12 +49,14 @@ members = [
 	"node/core/proposer",
 	"node/core/provisioner",
 	"node/core/runtime-api",
+	"node/network/approval-distribution",
 	"node/network/bridge",
 	"node/network/pov-distribution",
 	"node/network/protocol",
 	"node/network/statement-distribution",
 	"node/network/bitfield-distribution",
 	"node/network/availability-distribution",
+	"node/network/availability-recovery",
 	"node/network/collator-protocol",
 	"node/overseer",
 	"node/primitives",
@@ -61,10 +64,13 @@ members = [
 	"node/subsystem",
 	"node/subsystem-test-helpers",
 	"node/subsystem-util",
+	"node/jaeger",
+	"node/metered-channel",
 	"node/test/client",
 	"node/test/service",
 	"parachain/test-parachains",
 	"parachain/test-parachains/adder",
+	"parachain/test-parachains/adder/collator",
 ]
 
 [badges]
@@ -81,6 +87,7 @@ panic = "unwind"
 
 [features]
 runtime-benchmarks=["cli/runtime-benchmarks"]
+real-overseer=["cli/real-overseer"]
 
 # Configuration for building a .deb package - for use with `cargo-deb`
 [package.metadata.deb]
