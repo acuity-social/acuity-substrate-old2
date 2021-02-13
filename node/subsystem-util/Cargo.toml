@@ -30,7 +30,7 @@ sp-keystore = { git = "https://github.com/paritytech/substrate", branch = "polka
 substrate-prometheus-endpoint = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 
 [dev-dependencies]
-assert_matches = "1.4.0"
+assert_matches = "1.5.0"
 async-trait = "0.1.42"
 env_logger = "0.8.2"
 futures = { version = "0.3.12", features = ["thread-pool"] }

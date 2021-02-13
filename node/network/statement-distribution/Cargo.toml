@@ -20,7 +20,7 @@ indexmap = "1.6.1"
 
 [dev-dependencies]
 polkadot-node-subsystem-test-helpers = { path = "../../subsystem-test-helpers" }
-assert_matches = "1.4.0"
+assert_matches = "1.5.0"
 sp-keyring = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 sp-core = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 sp-application-crypto = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }

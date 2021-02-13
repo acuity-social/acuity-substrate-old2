@@ -31,7 +31,7 @@ thiserror = "1.0.23"
 log = "0.4.13"
 
 [dev-dependencies]
-assert_matches = "1.4.0"
+assert_matches = "1.5.0"
 async-trait = "0.1.42"
 futures = { version = "0.3.12", features = ["thread-pool"] }
 polkadot-node-subsystem-test-helpers = { path = "../subsystem-test-helpers" }

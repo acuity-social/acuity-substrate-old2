@@ -25,5 +25,5 @@ sp-application-crypto = { git = "https://github.com/paritytech/substrate", branc
 sp-keyring = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 sp-tracing = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 sc-keystore = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
-assert_matches = "1.4.0"
+assert_matches = "1.5.0"
 maplit = "1.0"
