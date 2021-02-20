@@ -4,7 +4,7 @@
 
 set -e
 
-chainspec="rococo-local"
+chainspec="acuity-local"
 
 # disabled until we can actually successfully register the chain with polkadot-js-api
 # if ! command -v polkadot-js-api > /dev/null; then

@@ -28,7 +28,7 @@ fn purge_chain_works() {
 
 	let tmpdir = tempdir().expect("could not create temp dir");
 
-	let mut cmd = Command::new(cargo_bin("polkadot"))
+	let mut cmd = Command::new(cargo_bin("acuity"))
 		.args(&["--dev", "-d"])
 		.arg(tmpdir.path())
 		.spawn()
@@ -46,7 +46,7 @@ fn purge_chain_works() {
 	assert!(common::wait_for(&mut cmd, 30).map(|x| x.success()).unwrap_or_default());
 
 	// Purge chain
-	let status = Command::new(cargo_bin("polkadot"))
+	let status = Command::new(cargo_bin("acuity"))
 		.args(&["purge-chain", "--dev", "-d"])
 		.arg(tmpdir.path())
 		.arg("-y")
@@ -55,6 +55,6 @@ fn purge_chain_works() {
 	assert!(status.success());
 
 	// Make sure that the `dev` chain folder exists, but the `db` is deleted.
-	assert!(tmpdir.path().join("chains/dev/").exists());
-	assert!(!tmpdir.path().join("chains/dev/db").exists());
+	assert!(tmpdir.path().join("chains/acuity_dev/").exists());
+	assert!(!tmpdir.path().join("chains/acuity_dev/db").exists());
 }

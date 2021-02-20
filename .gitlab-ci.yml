@@ -65,13 +65,13 @@ default:
 .rules-build:                      &rules-build
   rules:
     # Due to https://gitlab.com/gitlab-org/gitlab/-/issues/31264 there's no way to setup a manual
-    # build job so that publish-docker-rococo would "needs" build-linux-rococo job. This leads
+    # build job so that publish-docker-acuity would "needs" build-linux-acuity job. This leads
     # either to blocked or to forever running pipeline. It was decided to run these jobs from UI
     # and on schedule.
     #
     # $PIPELINE should be passed in https://gitlab.parity.io/parity/polkadot/-/pipeline_schedules
     # or other trigger to avoid running these jobs and run just those allowing this variable.
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
       when: never
     - if: $CI_PIPELINE_SOURCE == "web"
     - if: $CI_PIPELINE_SOURCE == "schedule"
@@ -81,14 +81,14 @@ default:
 .rules-test:                       &rules-test
   # these jobs run always*
   rules:
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
       when: never
     - when: always
 
 .pr-only:                          &rules-pr-only
   # these jobs run only on PRs
   rules:
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
       when: never
     - if: $CI_PIPELINE_SOURCE == "schedule"
       when: never
@@ -204,7 +204,7 @@ build-linux-release:
   <<:                              *compiler-info
   rules:
     # .rules-test with manual on PRs
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
       when: never
     - if: $CI_COMMIT_REF_NAME =~ /^[0-9]+$/                         # PRs
       when: manual
@@ -215,13 +215,13 @@ build-linux-release:
     - sccache -s
     - *pack-artifacts
 
-build-linux-rococo:
+build-linux-acuity:
   stage:                           build
   <<:                              *collect-artifacts
   <<:                              *docker-env
   <<:                              *compiler-info
   rules:
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
   script:
     - time cargo build --release --verbose --features=real-overseer
     - sccache -s
@@ -276,7 +276,7 @@ publish-docker-polkadot:
   # Don't run on releases - this is handled by the Github Action here:
   # .github/workflows/publish-docker-release.yml
   rules:
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
       when: never
     - if: $CI_PIPELINE_SOURCE == "schedule"
     - if: $CI_PIPELINE_SOURCE == "web"
@@ -289,18 +289,18 @@ publish-docker-polkadot:
     # DOCKERFILE:                  scripts/docker/Dockerfile
     IMAGE_NAME:                    docker.io/parity/polkadot
 
-publish-docker-rococo:
+publish-docker-acuity:
   stage:                           publish
   <<:                              *build-push-docker-image
   rules:
-    - if: $PIPELINE == "rococo"
+    - if: $PIPELINE == "acuity"
   needs:
-    - job:                         build-linux-rococo
+    - job:                         build-linux-acuity
       artifacts:                   true
   variables:
     GIT_STRATEGY:                  none
     # DOCKERFILE:                  scripts/docker/Dockerfile
-    IMAGE_NAME:                    docker.io/parity/rococo
+    IMAGE_NAME:                    docker.io/parity/acuity
 
 publish-s3-release:
   stage:                           publish

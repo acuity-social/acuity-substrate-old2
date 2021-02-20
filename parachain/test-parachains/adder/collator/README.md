@@ -2,13 +2,13 @@
 
 First start two validators that will run for the relay chain:
 ```sh
-cargo run --features=real-overseer --release -- -d alice --chain rococo-local --validator --alice --port 50551
-cargo run --features=real-overseer --release -- -d bob --chain rococo-local --validator --bob --port 50552
+cargo run --features=real-overseer --release -- -d alice --chain acuity-local --validator --alice --port 50551
+cargo run --features=real-overseer --release -- -d bob --chain acuity-local --validator --bob --port 50552
 ```
 
 Next start the collator that will collate for the adder parachain:
 ```sh
-cargo run --features=real-overseer --release -p test-parachain-adder-collator -- --tmp --chain rococo-local --port 50553
+cargo run --features=real-overseer --release -p test-parachain-adder-collator -- --tmp --chain acuity-local --port 50553
 ```
 
 The last step is to register the parachain using polkadot-js. The parachain id is
