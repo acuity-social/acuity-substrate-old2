@@ -10,7 +10,7 @@ futures-timer = "3.0.2"
 kvdb = "0.8.0"
 kvdb-rocksdb = "0.10.0"
 thiserror = "1.0.23"
-tracing = "0.1.22"
+tracing = "0.1.25"
 tracing-futures = "0.2.4"
 bitvec = "0.17.4"
 
