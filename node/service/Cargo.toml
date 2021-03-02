@@ -47,6 +47,7 @@ pallet-babe = { git = "https://github.com/paritytech/substrate", branch = "polka
 pallet-im-online = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 pallet-staking = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 pallet-transaction-payment-rpc-runtime-api = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
+pallet-contracts = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }
 
 # Substrate Other
 frame-benchmarking = { git = "https://github.com/paritytech/substrate", branch = "polkadot-v0.8.28" }

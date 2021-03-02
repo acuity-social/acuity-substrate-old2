@@ -192,6 +192,8 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 		),
 	];
 
+    let enable_println = false;
+
 	const ENDOWMENT: u128 = 1_000_000 * ACU;
 	const STASH: u128 = 100 * ACU;
 
@@ -270,6 +272,12 @@ fn acuity_staging_testnet_config_genesis(wasm_binary: &[u8]) -> acuity::GenesisC
 			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
 		}),
         pallet_treasury: Some(Default::default()),
+        pallet_contracts: Some(acuity::ContractsConfig {
+			current_schedule: pallet_contracts::Schedule {
+				enable_println, // this should only be enabled on development chains
+				..Default::default()
+			},
+		}),
 	}
 }
 
@@ -368,6 +376,7 @@ pub fn acuity_testnet_genesis(
 	endowed_accounts: Option<Vec<AccountId>>,
 ) -> acuity::GenesisConfig {
 	let endowed_accounts: Vec<AccountId> = endowed_accounts.unwrap_or_else(testnet_accounts);
+    let enable_println = false;
 
 	const ENDOWMENT: u128 = 1_000_000 * ACU;
 	const STASH: u128 = 100 * ACU;
@@ -446,6 +455,12 @@ pub fn acuity_testnet_genesis(
 			key: hex!["f6975b7b02a612488765c168b840176ef5eccd135f7c46314f44eb13e67ac30e"].into(),
 		}),
         pallet_treasury: Some(Default::default()),
+        pallet_contracts: Some(acuity::ContractsConfig {
+			current_schedule: pallet_contracts::Schedule {
+				enable_println, // this should only be enabled on development chains
+				..Default::default()
+			},
+		}),
 	}
 }
 
