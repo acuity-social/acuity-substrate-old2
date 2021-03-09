@@ -29,7 +29,7 @@ use primitives::v1::{
 	AccountId, AccountIndex, Balance, BlockNumber, CandidateEvent, CommittedCandidateReceipt,
 	CoreState, GroupRotationInfo, Hash, Id, Moment, Nonce, OccupiedCoreAssumption,
 	PersistedValidationData, Signature, ValidationCode, ValidatorId, ValidatorIndex,
-	InboundDownwardMessage, InboundHrmpMessage, SessionInfo, AssignmentId,
+	InboundDownwardMessage, InboundHrmpMessage, SessionInfo,
 };
 use runtime_common::{
 	claims, SlowAdjustingFeeUpdate, CurrencyToVote,
@@ -90,7 +90,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
 	spec_name: create_runtime_str!("acuity"),
 	impl_name: create_runtime_str!("acuity-substrate"),
 	authoring_version: 1,
-	spec_version: 4,
+	spec_version: 5,
 	impl_version: 0,
 	#[cfg(not(feature = "disable-runtime-api"))]
 	apis: RUNTIME_API_VERSIONS,
@@ -172,6 +172,8 @@ impl pallet_scheduler::Config for Runtime {
 parameter_types! {
 	pub const EpochDuration: u64 = EPOCH_DURATION_IN_BLOCKS as u64;
 	pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
+	pub const ReportLongevity: u64 =
+		BondingDuration::get() as u64 * SessionsPerEra::get() as u64 * EpochDuration::get();
 }
 
 impl pallet_babe::Config for Runtime {
@@ -194,7 +196,7 @@ impl pallet_babe::Config for Runtime {
 	)>>::IdentificationTuple;
 
 	type HandleEquivocation =
-		pallet_babe::EquivocationHandler<Self::KeyOwnerIdentification, Offences>;
+		pallet_babe::EquivocationHandler<Self::KeyOwnerIdentification, Offences, ReportLongevity>;
 
 	type WeightInfo = ();
 }
@@ -285,25 +287,6 @@ impl_opaque_keys! {
 	}
 }
 
-fn transform_session_keys(v: AccountId, old: OldSessionKeys) -> SessionKeys {
-	SessionKeys {
-		grandpa: old.grandpa,
-		babe: old.babe,
-		im_online: old.im_online,
-		para_validator: old.para_validator,
-		para_assignment: {
-			// We need to produce a dummy value that's unique for the validator.
-			let mut id = AssignmentId::default();
-			let id_raw: &mut [u8] = id.as_mut();
-			id_raw.copy_from_slice(v.as_ref());
-			id_raw[0..4].copy_from_slice(b"asgn");
-
-			id
-		},
-		authority_discovery: old.authority_discovery,
-	}
-}
-
 parameter_types! {
 	pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(17);
 }
@@ -324,6 +307,41 @@ impl pallet_session::Config for Runtime {
 impl pallet_session::historical::Config for Runtime {
 	type FullIdentification = pallet_staking::Exposure<AccountId, Balance>;
 	type FullIdentificationOf = pallet_staking::ExposureOf<Runtime>;
+}
+
+parameter_types! {
+	// no signed phase for now, just unsigned.
+	pub const SignedPhase: u32 = 0;
+	// NOTE: length of unsigned phase is, for now, different than `ElectionLookahead` to make sure
+	// that we won't run OCW threads at the same time with staking.
+	pub const UnsignedPhase: u32 = ElectionLookahead::get() / 2;
+
+	// fallback: no need to do on-chain phragmen while we re on a dry-run.
+	pub const Fallback: pallet_election_provider_multi_phase::FallbackStrategy =
+		pallet_election_provider_multi_phase::FallbackStrategy::Nothing;
+
+	pub SolutionImprovementThreshold: Perbill = Perbill::from_rational_approximation(1u32, 10_000);
+
+	// miner configs
+	pub MultiPhaseUnsignedPriority: TransactionPriority = StakingUnsignedPriority::get() - 1u64;
+	pub const MinerMaxIterations: u32 = 10;
+}
+
+impl pallet_election_provider_multi_phase::Config for Runtime {
+	type Event = Event;
+	type Currency = Balances;
+	type SignedPhase = SignedPhase;
+	type UnsignedPhase = UnsignedPhase;
+	type SolutionImprovementThreshold = MinSolutionScoreBump;
+	type MinerMaxIterations = MinerMaxIterations;
+	type MinerMaxWeight = OffchainSolutionWeightLimit; // For now use the one from staking.
+	type MinerTxPriority = MultiPhaseUnsignedPriority;
+	type DataProvider = Staking;
+	type OnChainAccuracy = Perbill;
+	type CompactSolution = pallet_staking::CompactAssignments;
+	type Fallback = Fallback;
+	type BenchmarkingConfig = ();
+	type WeightInfo = weights::pallet_election_provider_multi_phase::WeightInfo<Runtime>;
 }
 
 // TODO #6469: This shouldn't be static, but a lazily cached value, not built unless needed, and
@@ -388,6 +406,7 @@ impl pallet_staking::Config for Runtime {
 	// The unsigned solution weight targeted by the OCW. We set it to the maximum possible value of
 	// a single extrinsic.
 	type OffchainSolutionWeightLimit = OffchainSolutionWeightLimit;
+	type ElectionProvider = ElectionProviderMultiPhase;
 	type WeightInfo = weights::pallet_staking::WeightInfo<Runtime>;
 }
 
@@ -626,6 +645,7 @@ parameter_types! {
 impl pallet_im_online::Config for Runtime {
 	type AuthorityId = ImOnlineId;
 	type Event = Event;
+	type ValidatorSet = Historical;
 	type ReportUnresponsiveness = Offences;
 	type SessionDuration = SessionDuration;
 	type UnsignedPriority = ImOnlineUnsignedPriority;
@@ -646,7 +666,8 @@ impl pallet_grandpa::Config for Runtime {
 		GrandpaId,
 	)>>::IdentificationTuple;
 
-	type HandleEquivocation = pallet_grandpa::EquivocationHandler<Self::KeyOwnerIdentification, Offences>;
+	type HandleEquivocation =
+		pallet_grandpa::EquivocationHandler<Self::KeyOwnerIdentification, Offences, ReportLongevity>;
 
 	type WeightInfo = ();
 }
@@ -914,7 +935,7 @@ impl InstanceFilter<Call> for ProxyType {
 				Call::Utility(..)
 			),
 			ProxyType::CancelProxy => matches!(c,
-				Call::Proxy(pallet_proxy::Call::remove_announcement(..))
+				Call::Proxy(pallet_proxy::Call::reject_announcement(..))
 			)
 		}
 	}
@@ -949,27 +970,6 @@ impl pallet_sudo::Config for Runtime {
 	type Call = Call;
 }
 
-// When this is removed, should also remove `OldSessionKeys`.
-pub struct UpgradeSessionKeys;
-impl frame_support::traits::OnRuntimeUpgrade for UpgradeSessionKeys {
-	fn on_runtime_upgrade() -> frame_support::weights::Weight {
-		Session::upgrade_keys::<OldSessionKeys, _>(transform_session_keys);
-		Perbill::from_percent(50) * BlockWeights::get().max_block
-	}
-}
-
-pub struct PhragmenElectionDepositRuntimeUpgrade;
-impl pallet_elections_phragmen::migrations_3_0_0::V2ToV3 for PhragmenElectionDepositRuntimeUpgrade {
-	type AccountId = AccountId;
-	type Balance = Balance;
-	type Module = ElectionsPhragmen;
-}
-impl frame_support::traits::OnRuntimeUpgrade for PhragmenElectionDepositRuntimeUpgrade {
-	fn on_runtime_upgrade() -> frame_support::weights::Weight {
-		pallet_elections_phragmen::migrations_3_0_0::apply::<Self>(5 * CENTS, DOLLARS)
-	}
-}
-
 construct_runtime! {
 	pub enum Runtime where
 		Block = Block,
@@ -981,7 +981,7 @@ construct_runtime! {
 		RandomnessCollectiveFlip: pallet_randomness_collective_flip::{Module, Storage} = 32,
 
 		// Must be before session.
-		Babe: pallet_babe::{Module, Call, Storage, Config, Inherent, ValidateUnsigned} = 1,
+		Babe: pallet_babe::{Module, Call, Storage, Config, ValidateUnsigned} = 1,
 
 		Timestamp: pallet_timestamp::{Module, Call, Storage, Inherent} = 2,
 		Indices: pallet_indices::{Module, Call, Storage, Config<T>, Event<T>} = 3,
@@ -1041,6 +1041,9 @@ construct_runtime! {
 
 		// Tips module.
 		Tips: pallet_tips::{Module, Call, Storage, Event<T>} = 37,
+
+		// Election pallet. Only works with staking, but placed here to maintain indices.
+		ElectionProviderMultiPhase: pallet_election_provider_multi_phase::{Module, Call, Storage, Event<T>, ValidateUnsigned} = 38,
 	}
 }
 
@@ -1074,8 +1077,7 @@ pub type Executive = frame_executive::Executive<
 	Block,
 	frame_system::ChainContext<Runtime>,
 	Runtime,
-	AllModules,
-	(UpgradeSessionKeys, PhragmenElectionDepositRuntimeUpgrade)
+	AllModules
 >;
 /// The payload being signed in the transactions.
 pub type SignedPayload = generic::SignedPayload<Call, SignedExtra>;
@@ -1248,11 +1250,11 @@ sp_api::impl_runtime_apis! {
 				c: PRIMARY_PROBABILITY,
 				genesis_authorities: Babe::authorities(),
 				randomness: Babe::randomness(),
-				allowed_slots: babe_primitives::AllowedSlots::PrimaryAndSecondaryPlainSlots,
+				allowed_slots: babe_primitives::AllowedSlots::PrimaryAndSecondaryVRFSlots,
 			}
 		}
 
-		fn current_epoch_start() -> babe_primitives::SlotNumber {
+		fn current_epoch_start() -> babe_primitives::Slot {
 			Babe::current_epoch_start()
 		}
 
@@ -1265,7 +1267,7 @@ sp_api::impl_runtime_apis! {
 		}
 
 		fn generate_key_ownership_proof(
-			_slot_number: babe_primitives::SlotNumber,
+			_slot: babe_primitives::Slot,
 			authority_id: babe_primitives::AuthorityId,
 		) -> Option<babe_primitives::OpaqueKeyOwnershipProof> {
 			use parity_scale_codec::Encode;
@@ -1366,6 +1368,7 @@ sp_api::impl_runtime_apis! {
 			add_benchmark!(params, batches, pallet_collective, Council);
 			add_benchmark!(params, batches, pallet_democracy, Democracy);
 			add_benchmark!(params, batches, pallet_elections_phragmen, ElectionsPhragmen);
+			add_benchmark!(params, batches, pallet_election_provider_multi_phase, ElectionProviderMultiPhase);
 			add_benchmark!(params, batches, pallet_identity, Identity);
 			add_benchmark!(params, batches, pallet_im_online, ImOnline);
 			add_benchmark!(params, batches, pallet_indices, Indices);
@@ -1424,39 +1427,23 @@ mod test_fees {
 		let len = call.using_encoded(|e| e.len()) as u32;
 
 		let mut ext = sp_io::TestExternalities::new_empty();
-		ext.execute_with(|| {
-			pallet_transaction_payment::NextFeeMultiplier::put(min_multiplier);
-			let fee = TransactionPayment::compute_fee(len, &info, 0);
-			println!(
-				"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
-				info.weight.separated_string(),
-				pallet_transaction_payment::NextFeeMultiplier::get(),
-				fee.separated_string(),
-			);
-		});
+		let mut test_with_multiplier = |m| {
+			ext.execute_with(|| {
+				pallet_transaction_payment::NextFeeMultiplier::put(m);
+				let fee = TransactionPayment::compute_fee(len, &info, 0);
+				println!(
+					"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
+					info.weight.separated_string(),
+					pallet_transaction_payment::NextFeeMultiplier::get(),
+					fee.separated_string(),
+				);
+			});
+		};
 
-		ext.execute_with(|| {
-			let mul = Multiplier::saturating_from_rational(1, 1000_000_000u128);
-			pallet_transaction_payment::NextFeeMultiplier::put(mul);
-			let fee = TransactionPayment::compute_fee(len, &info, 0);
-			println!(
-				"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
-				info.weight.separated_string(),
-				pallet_transaction_payment::NextFeeMultiplier::get(),
-				fee.separated_string(),
-			);
-		});
-
-		ext.execute_with(|| {
-			let mul = Multiplier::saturating_from_rational(1, 1u128);
-			pallet_transaction_payment::NextFeeMultiplier::put(mul);
-			let fee = TransactionPayment::compute_fee(len, &info, 0);
-			println!(
-				"weight = {:?} // multiplier = {:?} // full transfer fee = {:?}",
-				info.weight.separated_string(),
-				pallet_transaction_payment::NextFeeMultiplier::get(),
-				fee.separated_string(),
-			);
-		});
+		test_with_multiplier(min_multiplier);
+		test_with_multiplier(Multiplier::saturating_from_rational(1, 1u128));
+		test_with_multiplier(Multiplier::saturating_from_rational(1, 1_000u128));
+		test_with_multiplier(Multiplier::saturating_from_rational(1, 1_000_000u128));
+		test_with_multiplier(Multiplier::saturating_from_rational(1, 1_000_000_000u128));
 	}
 }

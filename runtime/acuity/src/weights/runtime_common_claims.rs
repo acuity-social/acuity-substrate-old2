@@ -17,12 +17,12 @@
 //!
 //! THIS FILE WAS AUTO-GENERATED USING THE SUBSTRATE BENCHMARK CLI VERSION 2.0.0
 //! DATE: 2020-12-30, STEPS: [50, ], REPEAT: 20, LOW RANGE: [], HIGH RANGE: []
-//! EXECUTION: Some(Wasm), WASM-EXECUTION: Compiled, CHAIN: Some("kusama-dev"), DB CACHE: 128
+//! EXECUTION: Some(Wasm), WASM-EXECUTION: Compiled, CHAIN: Some("acuity-dev"), DB CACHE: 128
 
 // Executed Command:
 // target/release/polkadot
 // benchmark
-// --chain=kusama-dev
+// --chain=acuity-dev
 // --steps=50
 // --repeat=20
 // --pallet=runtime_common::claims
@@ -31,7 +31,7 @@
 // --wasm-execution=compiled
 // --heap-pages=4096
 // --header=./file_header.txt
-// --output=./runtime/kusama/src/weights/runtime_common_claims.rs
+// --output=./runtime/acuity/src/weights/runtime_common_claims.rs
 
 
 #![allow(unused_parens)]
