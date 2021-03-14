@@ -144,7 +144,7 @@ std = [
 	"sp-version/std",
 	"pallet-utility/std",
 	"pallet-vesting/std",
-  "pallet-sudo/std",
+	"pallet-sudo/std",
 	"serde_derive",
 	"serde/std",
 	"log",
