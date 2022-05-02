@@ -6081,7 +6081,7 @@ dependencies = [
  "substrate-test-client",
  "substrate-test-utils",
  "tempfile",
- "tokio 0.2.25",
+ "tokio 1.18.1",
  "tracing",
 ]
 
@@ -9222,7 +9222,7 @@ dependencies = [
  "structopt",
  "substrate-test-utils",
  "test-parachain-adder",
- "tokio 0.2.25",
+ "tokio 1.18.1",
 ]
 
 [[package]]
@@ -9400,8 +9400,18 @@ dependencies = [
  "pin-project-lite 0.1.12",
  "signal-hook-registry",
  "slab",
- "tokio-macros",
+ "tokio-macros 0.2.6",
  "winapi 0.3.9",
+]
+
+[[package]]
+name = "tokio"
+version = "1.18.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dce653fb475565de9f6fb0614b28bca8df2c430c0cf84bcd9c843f15de5414cc"
+dependencies = [
+ "pin-project-lite 0.2.6",
+ "tokio-macros 1.7.0",
 ]
 
 [[package]]
@@ -9473,6 +9483,17 @@ name = "tokio-macros"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e44da00bfc73a25f814cd8d7e57a68a5c31b74b3152a0a1d1f590c97ed06265a"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "tokio-macros"
+version = "1.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b557f72f448c511a979e2564e55d74e6c4432fc96ff4f6241bc6bded342643b7"
 dependencies = [
  "proc-macro2",
  "quote",
